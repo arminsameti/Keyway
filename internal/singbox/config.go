@@ -17,6 +17,7 @@ const (
 	TagWireGuard = "with_wireguard"
 	TagUTLS      = "with_utls"
 	TagNaive     = "with_naive_outbound"
+	TagOpenVPN   = "with_openvpn"
 )
 
 // Supports reports whether sing-box can run the profile. tags are the build
@@ -51,6 +52,10 @@ func Supports(p profile.Profile, tags map[string]bool) error {
 		}
 	case profile.WireGuard:
 		if err := need(TagWireGuard, "WireGuard"); err != nil {
+			return err
+		}
+	case profile.OpenVPN:
+		if err := need(TagOpenVPN, "OpenVPN"); err != nil {
 			return err
 		}
 	case profile.Naive:
@@ -107,19 +112,56 @@ func RequiredRuleSets(s models.Settings) []string {
 	return out
 }
 
-// BuildConfig renders the full client configuration. ruleSetPath maps a rule
-// set name to its local file.
-func BuildConfig(p profile.Profile, s models.Settings, ruleSetPath func(string) string) (*Config, error) {
+// bridgeTag is the outbound that reaches the previous segment's bridge.
+const bridgeTag = "bridge"
+
+func hopTag(i, n int) string {
+	if i == n-1 {
+		return "proxy" // the exit hop: the routing rules' "proxy" target
+	}
+	return fmt.Sprintf("hop-%d", i)
+}
+
+// SupportsSegment reports whether one sing-box process can run the hops as a
+// chain. Every hop must be supported; sing-box dials each hop through the one
+// before it with the "detour" dial field.
+func SupportsSegment(hops []profile.Profile, tags map[string]bool) error {
+	for i, h := range hops {
+		if err := Supports(h, tags); err != nil {
+			if len(hops) > 1 {
+				return fmt.Errorf("hop %d (%s): %w", i+1, profile.ProtocolName(h.Protocol), err)
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+// BuildConfig renders the client configuration of one segment. The last
+// segment of a chain carries the user's inbounds and routing; a segment with
+// Listen set is a middle segment and only exposes its exit on that bridge.
+// ruleSetPath maps a rule set name to its local file.
+func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string) string) (*Config, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
-	cfg, err := base(p)
+	cfg, err := base(seg)
 	if err != nil {
 		return nil, err
 	}
 	cfg.Log = logFor(s.LogLevel)
-	if s.Mux && muxCapable(p) {
-		cfg.Outbounds[0].Multiplex = &Multiplex{Enabled: true, MaxStreams: s.MuxConcurrency}
+	if seg.Listen != nil {
+		cfg.Inbounds = []Inbound{bridgeInbound(*seg.Listen)}
+		cfg.Route.Rules = []Rule{}
+		return cfg, nil
+	}
+	exit := seg.Hops[len(seg.Hops)-1]
+	if s.Mux && muxCapable(exit) {
+		for i := range cfg.Outbounds {
+			if cfg.Outbounds[i].Tag == "proxy" {
+				cfg.Outbounds[i].Multiplex = &Multiplex{Enabled: true, MaxStreams: s.MuxConcurrency}
+			}
+		}
 	}
 	for _, ib := range s.Inbounds {
 		if !ib.Enabled {
@@ -139,42 +181,73 @@ func BuildConfig(p profile.Profile, s models.Settings, ruleSetPath func(string) 
 	return cfg, nil
 }
 
-// ProbeConfig is a minimal config with one SOCKS inbound on 127.0.0.1:port.
-func ProbeConfig(p profile.Profile, port int) (*Config, error) {
-	cfg, err := base(p)
+func bridgeInbound(b profile.Bridge) Inbound {
+	return Inbound{Type: "socks", Tag: "bridge-in", Listen: "127.0.0.1", ListenPort: b.Port,
+		Users: []User{{Username: b.User, Password: b.Pass}}}
+}
+
+// ProbeConfig is a minimal config: a middle segment exposes its bridge, the
+// last segment a SOCKS inbound on 127.0.0.1:port without credentials.
+func ProbeConfig(seg profile.Segment, port int) (*Config, error) {
+	cfg, err := base(seg)
 	if err != nil {
 		return nil, err
 	}
 	cfg.Log = Log{Disabled: true}
-	cfg.Inbounds = []Inbound{{Type: "socks", Tag: "probe", Listen: "127.0.0.1", ListenPort: port}}
+	if seg.Listen != nil {
+		cfg.Inbounds = []Inbound{bridgeInbound(*seg.Listen)}
+	} else {
+		cfg.Inbounds = []Inbound{{Type: "socks", Tag: "probe", Listen: "127.0.0.1", ListenPort: port}}
+	}
 	cfg.Route.Rules = []Rule{}
 	return cfg, nil
 }
 
-// base holds the proxy outbound, a direct outbound and the system resolver
-// used for the proxy server's own address (it always goes direct).
-func base(p profile.Profile) (*Config, error) {
-	if err := p.Validate(); err != nil {
-		return nil, err
+// base holds the chain of hops (each dialing through the one before it), a
+// direct outbound and the system resolver used for the first server address.
+func base(seg profile.Segment) (*Config, error) {
+	n := len(seg.Hops)
+	if n == 0 {
+		return nil, fmt.Errorf("a segment needs at least one hop")
 	}
-	if err := Supports(p, nil); err != nil {
+	for _, h := range seg.Hops {
+		if err := h.Validate(); err != nil {
+			return nil, err
+		}
+	}
+	if err := SupportsSegment(seg.Hops, nil); err != nil {
 		return nil, err
 	}
 	cfg := &Config{
 		DNS:   &DNS{Servers: []DNSServer{{Type: "local", Tag: "local"}}, Final: "local"},
 		Route: Route{Final: "proxy", DefaultDomainResolver: "local"},
 	}
-	direct := Outbound{Type: "direct", Tag: "direct"}
-	if p.Protocol == profile.WireGuard {
-		cfg.Endpoints = []Endpoint{wireGuard(p)}
-		cfg.Outbounds = []Outbound{direct}
-		return cfg, nil
+	detour := ""
+	if seg.Upstream != nil {
+		u := seg.Upstream
+		cfg.Outbounds = append(cfg.Outbounds, Outbound{Type: "socks", Tag: bridgeTag, Server: "127.0.0.1", ServerPort: u.Port,
+			Version: "5", Username: u.User, Password: u.Pass})
+		detour = bridgeTag
 	}
-	obs, err := outbounds(p)
-	if err != nil {
-		return nil, err
+	for i, h := range seg.Hops {
+		tag := hopTag(i, n)
+		switch h.Protocol {
+		case profile.WireGuard:
+			ep := wireGuard(h)
+			ep.Tag, ep.Detour = tag, detour
+			cfg.Endpoints = append(cfg.Endpoints, ep)
+		case profile.OpenVPN:
+			cfg.Endpoints = append(cfg.Endpoints, openVPN(h, tag, detour))
+		default:
+			obs, err := outbounds(h, tag, detour)
+			if err != nil {
+				return nil, err
+			}
+			cfg.Outbounds = append(cfg.Outbounds, obs...)
+		}
+		detour = tag
 	}
-	cfg.Outbounds = append(obs, direct)
+	cfg.Outbounds = append(cfg.Outbounds, Outbound{Type: "direct", Tag: "direct"})
 	return cfg, nil
 }
 
@@ -241,8 +314,9 @@ func transport(t profile.Transport) *Transport {
 	return nil
 }
 
-func outbounds(p profile.Profile) ([]Outbound, error) {
-	ob := Outbound{Tag: "proxy", Server: p.Server, ServerPort: p.Port, TLS: tls(p.Security), Transport: transport(p.Transport)}
+// outbounds renders one hop under tag, dialing through detour ("" = directly).
+func outbounds(p profile.Profile, tag, detour string) ([]Outbound, error) {
+	ob := Outbound{Tag: tag, Detour: detour, Server: p.Server, ServerPort: p.Port, TLS: tls(p.Security), Transport: transport(p.Transport)}
 	switch p.Protocol {
 	case profile.VLESS:
 		ob.Type, ob.UUID, ob.Flow = "vless", p.UUID, p.Flow
@@ -296,12 +370,12 @@ func outbounds(p profile.Profile) ([]Outbound, error) {
 		}
 	case profile.ShadowTLS:
 		st := p.ShadowTLS
-		shadow := Outbound{Type: "shadowtls", Tag: "shadowtls-out", Server: p.Server, ServerPort: p.Port,
+		shadow := Outbound{Type: "shadowtls", Tag: tag + "-tls", Detour: detour, Server: p.Server, ServerPort: p.Port,
 			Version: st.Version, Password: st.Password, TLS: &TLS{Enabled: true, ServerName: st.SNI}}
 		if p.Security.Fingerprint != "" {
 			shadow.TLS.UTLS = &UTLS{Enabled: true, Fingerprint: p.Security.Fingerprint}
 		}
-		inner := Outbound{Type: "shadowsocks", Tag: "proxy", Method: p.Cipher, Password: p.Password, Detour: "shadowtls-out"}
+		inner := Outbound{Type: "shadowsocks", Tag: tag, Method: p.Cipher, Password: p.Password, Detour: tag + "-tls"}
 		return []Outbound{inner, shadow}, nil
 	default:
 		return nil, fmt.Errorf("%s is not supported by sing-box", profile.ProtocolName(p.Protocol))
@@ -317,9 +391,7 @@ func wireGuard(p profile.Profile) Endpoint {
 	}
 	peer := Peer{Address: p.Server, Port: p.Port, PublicKey: w.PeerPublicKey, PreSharedKey: w.PreSharedKey,
 		AllowedIPs: allowed, Reserved: w.Reserved}
-	if w.Keepalive > 0 {
-		peer.Keepalive = strconv.Itoa(w.Keepalive) + "s"
-	}
+	peer.Keepalive = w.Keepalive
 	return Endpoint{Type: "wireguard", Tag: "proxy", Address: w.LocalAddress, PrivateKey: w.PrivateKey, MTU: w.MTU, Peers: []Peer{peer}}
 }
 

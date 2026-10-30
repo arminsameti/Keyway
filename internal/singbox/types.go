@@ -9,7 +9,7 @@ type Config struct {
 	DNS       *DNS       `json:"dns,omitempty"`
 	Inbounds  []Inbound  `json:"inbounds"`
 	Outbounds []Outbound `json:"outbounds"`
-	Endpoints []Endpoint `json:"endpoints,omitempty"`
+	Endpoints []any      `json:"endpoints,omitempty"` // Endpoint (WireGuard) or OpenVPNEndpoint
 	Route     Route      `json:"route"`
 }
 
@@ -123,6 +123,7 @@ type Multiplex struct {
 type Endpoint struct {
 	Type       string   `json:"type"`
 	Tag        string   `json:"tag"`
+	Detour     string   `json:"detour,omitempty"`
 	Address    []string `json:"address"`
 	PrivateKey string   `json:"private_key"`
 	MTU        int      `json:"mtu,omitempty"`
@@ -135,7 +136,7 @@ type Peer struct {
 	PublicKey    string   `json:"public_key"`
 	PreSharedKey string   `json:"pre_shared_key,omitempty"`
 	AllowedIPs   []string `json:"allowed_ips"`
-	Keepalive    string   `json:"persistent_keepalive_interval,omitempty"`
+	Keepalive    int      `json:"persistent_keepalive_interval,omitempty"` // seconds
 	Reserved     []int    `json:"reserved,omitempty"`
 }
 
@@ -166,4 +167,61 @@ type RuleSet struct {
 	Tag    string `json:"tag"`
 	Format string `json:"format"` // binary
 	Path   string `json:"path"`
+}
+
+// OpenVPNEndpoint is the "openvpn-client" endpoint (sing-box 1.14+): a userspace
+// OpenVPN tunnel, so no administrator rights are needed.
+type OpenVPNEndpoint struct {
+	Type    string       `json:"type"`
+	Tag     string       `json:"tag"`
+	Detour  string       `json:"detour,omitempty"`
+	Server  string       `json:"server,omitempty"`
+	Port    int          `json:"server_port,omitempty"`
+	Servers []OVPNServer `json:"servers,omitempty"`
+	Random  bool         `json:"remote_random,omitempty"`
+	Network string       `json:"network,omitempty"`
+
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+
+	TLS *OVPNTLS `json:"tls"`
+
+	DataCiphers         []string `json:"data_ciphers,omitempty"`
+	DataCiphersFallback string   `json:"data_ciphers_fallback,omitempty"`
+	Auth                string   `json:"auth,omitempty"`
+	Compression         string   `json:"compression,omitempty"`
+	CompressionLZO      string   `json:"compression_lzo,omitempty"`
+	AllowCompression    string   `json:"allow_compression,omitempty"`
+	MSSFix              int      `json:"mss_fix,omitempty"`
+	Fragment            int      `json:"fragment,omitempty"`
+	RouteNoPull         bool     `json:"route_no_pull,omitempty"`
+	Topology            string   `json:"topology,omitempty"`
+	PingInterval        string   `json:"ping_interval,omitempty"`
+	PingRestart         string   `json:"ping_restart,omitempty"`
+	RenegotiateInterval string   `json:"renegotiate_interval,omitempty"`
+	RenegotiateDisabled bool     `json:"renegotiate_disabled,omitempty"`
+}
+
+type OVPNServer struct {
+	Server  string `json:"server"`
+	Port    int    `json:"server_port"`
+	Network string `json:"network,omitempty"`
+}
+
+type OVPNTLS struct {
+	ServerName      string           `json:"server_name,omitempty"`
+	ServerNameType  string           `json:"server_name_type,omitempty"`
+	Certificate     []string         `json:"certificate,omitempty"`
+	ClientCert      []string         `json:"client_certificate,omitempty"`
+	ClientKey       []string         `json:"client_key,omitempty"`
+	PeerFingerprint []string         `json:"peer_fingerprint,omitempty"`
+	RemoteCertTLS   string           `json:"remote_certificate_tls,omitempty"`
+	VersionMin      string           `json:"version_min,omitempty"`
+	ControlWrap     *OVPNControlWrap `json:"control_wrap,omitempty"`
+}
+
+type OVPNControlWrap struct {
+	Type      string   `json:"type"`
+	Key       []string `json:"key"`
+	Direction string   `json:"direction,omitempty"`
 }

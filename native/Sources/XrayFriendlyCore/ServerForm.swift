@@ -2,7 +2,7 @@ import Foundation
 
 /// One field of the New Server form (design/screens/NewServer.dc.html, `defs`).
 public struct FormField: Identifiable, Hashable, Sendable {
-    public enum Kind: Hashable, Sendable { case text, secret, select([String]), toggle }
+    public enum Kind: Hashable, Sendable { case text, secret, multiline, select([String]), toggle }
     public var id: String { key }
     public let key: String
     public let label: String
@@ -15,6 +15,9 @@ public struct FormField: Identifiable, Hashable, Sendable {
     }
     static func secret(_ key: String, _ label: String = "Password", _ ph: String = "Required", mono: Bool = false) -> FormField {
         FormField(key: key, label: label, placeholder: ph, kind: .secret, mono: mono)
+    }
+    static func multiline(_ key: String, _ label: String, _ ph: String) -> FormField {
+        FormField(key: key, label: label, placeholder: ph, kind: .multiline, mono: true)
     }
     static func select(_ key: String, _ label: String, _ options: [String]) -> FormField {
         FormField(key: key, label: label, placeholder: options.first ?? "", kind: .select(options), mono: false)
@@ -115,7 +118,17 @@ public enum ServerForms {
                     auth: [.text("username", "User", "root"), .select("sshAuth", "Authentication", ["Private key", "Password"]),
                            .text("keyPath", "Private key file", "~/.ssh/id_ed25519", mono: true),
                            .text("hostKey", "Host key", "Optional, pins the server", mono: true)], transport: false, tls: false, udp: false),
+        ProtocolDef(id: "openvpn", label: "OpenVPN", hint: "UDP or TCP, .ovpn files", engine: "sing-box",
+                    about: "The classic VPN. Open an .ovpn file to fill this in; it runs without administrator rights.", backend: "openvpn",
+                    auth: [.text("username", "Username", "Optional with a client certificate"), .secret("password", "Password", "Optional"),
+                           .multiline("ca", "CA certificate", "-----BEGIN CERTIFICATE-----"),
+                           .multiline("cert", "Client certificate", "Optional with a username and password"),
+                           .multiline("key", "Client key", "Optional with a username and password")], transport: false, tls: false, udp: false),
     ]
+
+    /// The control channel options of the OpenVPN form.
+    static let ovpnWraps = ["None", "tls-crypt", "tls-auth", "tls-crypt-v2"]
+    static let ovpnWrapTypes = ["tls-crypt": "tls_crypt", "tls-auth": "tls_auth", "tls-crypt-v2": "tls_crypt_v2"]
 
     public static func def(_ id: String) -> ProtocolDef { all.first { $0.id == id } ?? all[0] }
     public static func def(backend: String) -> ProtocolDef? { all.first { $0.backend == backend } }
@@ -130,6 +143,9 @@ public struct ServerForm: Equatable, Sendable {
     public var protocolID: String
     public var values: [String: String] = [:]
     public var flags: [String: Bool] = [:]
+    /// The profile this form was filled from. Options the form has no field for
+    /// (an imported .ovpn has dozens) are kept from it when the form is saved.
+    public var base: Profile?
 
     public init(protocolID: String) { self.protocolID = protocolID }
 
@@ -154,16 +170,25 @@ public struct ServerForm: Equatable, Sendable {
         return def.engine
     }
 
-    public var portPlaceholder: String { protocolID == "wg" ? "51820" : protocolID == "ssh" ? "22" : "443" }
+    public var portPlaceholder: String {
+        switch protocolID {
+        case "wg": return "51820"
+        case "ssh": return "22"
+        case "openvpn": return "1194"
+        default: return "443"
+        }
+    }
 
     // MARK: sections
 
     public var sections: [FormSection] {
         let d = def
-        var out = [FormSection(title: "Server", fields: [
+        var serverFields: [FormField] = [
             .text("name", "Name", "Shown in the server list"), .text("address", "Address", "server.example.net or IP"),
             .text("port", "Port", portPlaceholder),
-        ], note: nil)]
+        ]
+        if protocolID == "openvpn" { serverFields.append(.select("network", "Protocol", ["UDP", "TCP"])) }
+        var out = [FormSection(title: "Server", fields: serverFields, note: nil)]
         var auth = d.auth
         if protocolID == "hy2", choice("obfs", in: d.auth) == "Salamander" {
             auth.insert(.secret("obfsPassword", "Obfuscation password"), at: 2)
@@ -173,7 +198,12 @@ public struct ServerForm: Equatable, Sendable {
         }
         out.append(FormSection(title: "Authentication", fields: auth, note: nil))
 
-        if d.transport {
+        if protocolID == "openvpn" {
+            var wrap: [FormField] = [.select("wrap", "Control channel key", ServerForms.ovpnWraps)]
+            if choice("wrap", in: wrap) != "None" { wrap.append(.multiline("wrapKey", "Key", "-----BEGIN OpenVPN Static key V1-----")) }
+            out.append(FormSection(title: "Control Channel", fields: wrap,
+                                   note: "Pasting an .ovpn file anywhere in this window fills this form. UDP is the default; use “Real test” to measure latency."))
+        } else if d.transport {
             out.append(FormSection(title: "Transport & Security", fields: transportFields,
                                    note: "Transport options: TCP, WebSocket, gRPC, HTTP/2, XHTTP, mKCP, HTTPUpgrade."))
         } else if d.tls {
@@ -327,6 +357,32 @@ public struct ServerForm: Equatable, Sendable {
                 }
                 var n = Profile.Naive(); n.extraHeaders = hdr; p.naive = n
             }
+        case "openvpn":
+            if let b = base, b.protocol == "openvpn" {
+                var kept = b // everything the form does not show stays as imported
+                kept.server = p.server
+                kept.port = p.port
+                p = kept
+            }
+            var o = p.openvpn ?? Profile.OpenVPN()
+            let network = choice("network", in: sections[0].fields)
+            p.transport.type = network == "TCP" ? "tcp" : "udp"
+            p.username = opt("username")
+            p.password = opt("password")
+            o.ca = opt("ca")
+            o.cert = opt("cert")
+            o.key = opt("key")
+            if p.username != nil { o.needsCredential = nil }
+            let wrap = choice("wrap", in: sections.last?.fields ?? [])
+            if let type = ServerForms.ovpnWrapTypes[wrap] {
+                guard let key = opt("wrapKey") else { throw FormError(message: "Paste the \(wrap) key.") }
+                o.controlWrap = Profile.OpenVPN.ControlWrap(type: type, key: key,
+                                                            direction: o.controlWrap?.direction ?? (type == "tls_auth" ? "client" : nil))
+            } else {
+                o.controlWrap = nil
+            }
+            p.openvpn = o
+            p.security.kind = "tls"
         case "ssh":
             p.username = opt("username")
             var s = Profile.SSH()
@@ -457,6 +513,16 @@ public struct ServerForm: Equatable, Sendable {
             set("idle", p.anytls?.idleTimeoutSec.map { "\($0) s" })
         case "naive":
             set("headers", p.naive?.extraHeaders?.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }.joined(separator: ", "))
+        case "openvpn":
+            base = p
+            values["network"] = p.transport.type == "tcp" ? "TCP" : "UDP"
+            set("ca", p.openvpn?.ca)
+            set("cert", p.openvpn?.cert)
+            set("key", p.openvpn?.key)
+            if let w = p.openvpn?.controlWrap {
+                values["wrap"] = ServerForms.ovpnWrapTypes.first { $0.value == w.type }?.key ?? "None"
+                set("wrapKey", w.key)
+            }
         case "ssh":
             values["sshAuth"] = p.ssh?.privateKeyPath != nil || p.ssh?.privateKey != nil ? "Private key" : "Password"
             set("keyPath", p.ssh?.privateKeyPath)

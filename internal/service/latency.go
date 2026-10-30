@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -94,7 +95,14 @@ func (s *Service) Measure(ctx context.Context, nodes []models.Node, mode string)
 }
 
 func tcpProbe(ctx context.Context, n models.Node) int64 {
-	if (profile.Profile{Protocol: n.Protocol}).UDPBased() {
+	if n.Protocol == profile.Chain {
+		return models.LatencyNA // only the real test measures a whole chain
+	}
+	udp := (profile.Profile{Protocol: n.Protocol}).UDPBased()
+	if p, err := link.NodeProfile(n.RawLink, n.Profile); err == nil {
+		udp = p.UDPBased() // e.g. OpenVPN over TCP can be measured
+	}
+	if udp {
 		return models.LatencyNA // UDP: a TCP dial proves nothing
 	}
 	d := net.Dialer{Timeout: tcpTimeout}
@@ -107,43 +115,27 @@ func tcpProbe(ctx context.Context, n models.Node) int64 {
 	return time.Since(start).Milliseconds()
 }
 
-// probeNode measures one stored node end-to-end. A node whose engine is not
-// installed cannot be measured in this mode (n/a), which is different from a
-// server that does not answer (failed).
+// probeNode measures one stored node (a server or a chain) end-to-end. A node
+// whose engine is not installed cannot be measured in this mode (n/a), which
+// is different from one that does not answer (failed).
 func (s *Service) probeNode(ctx context.Context, d models.AppData, n models.Node) int64 {
-	p, err := link.NodeProfile(n.RawLink, n.Profile)
+	hops, names, err := s.resolveHops(d, n)
 	if err != nil {
 		return models.LatencyFailed
 	}
-	e, inst, err := s.resolveFor(p, d)
+	pl, err := s.planFor(hops, names, d)
 	if err != nil {
-		return models.LatencyNA
+		if errors.Is(err, core.ErrNotInstalled) {
+			return models.LatencyNA
+		}
+		return models.LatencyFailed
 	}
-	ms, err := s.probe(ctx, e, inst, p)
+	ms, err := s.probe(ctx, pl)
 	if err != nil {
-		s.log.Debug("probe failed", "node", n.Name, "engine", e.Name(), "err", err)
+		s.log.Debug("probe failed", "node", n.Name, "engines", engine.EngineNames(pl.steps), "err", err)
 		return models.LatencyFailed
 	}
 	return ms
-}
-
-// probe runs a throw-away engine with the profile as its only outbound and
-// times a real HTTP request through it.
-func (s *Service) probe(ctx context.Context, e engine.Engine, inst engine.Install, p profile.Profile) (int64, error) {
-	port, err := engine.FreePort()
-	if err != nil {
-		return 0, err
-	}
-	cfg, err := e.ProbeConfig(p, port)
-	if err != nil {
-		return 0, err
-	}
-	stop, err := engine.StartTemp(ctx, e, inst, cfg, port)
-	if err != nil {
-		return 0, err
-	}
-	defer stop()
-	return engine.URLTest(ctx, net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), "", proxyTimeout)
 }
 
 func (s *Service) applyLatencies(lat map[string]int64) {

@@ -58,6 +58,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/nodes/test", s.testServer)
 	mux.HandleFunc("POST /api/import/preview", s.previewImport)
 	mux.HandleFunc("POST /api/links/parse", s.parseLink)
+	mux.HandleFunc("POST /api/chains/plan", s.planChain)
 	mux.HandleFunc("GET /api/nodes/{id}/profile", s.nodeProfile)
 	mux.HandleFunc("GET /api/jobs", s.listJobs)
 	mux.HandleFunc("GET /api/jobs/{id}", s.getJob)

@@ -38,12 +38,18 @@ type Engine interface {
 	Name() string
 	// DisplayName is the user-facing name ("Xray core", "sing-box").
 	DisplayName() string
-	// Supports returns nil when the engine can run the profile, else the reason.
+	// Supports returns nil when the engine can run the profile as a single
+	// server, else the reason.
 	Supports(p profile.Profile) error
-	// Config renders the full client configuration.
-	Config(p profile.Profile, s models.Settings) ([]byte, error)
-	// ProbeConfig renders a minimal config with one SOCKS inbound on 127.0.0.1:port.
-	ProbeConfig(p profile.Profile, port int) ([]byte, error)
+	// SupportsSegment returns nil when one process of the engine can run the
+	// hops as a chain (each hop dialing through the one before it); hasUpstream
+	// says the first hop dials through another process's bridge.
+	SupportsSegment(hops []profile.Profile, hasUpstream bool) error
+	// Config renders the full client configuration of one segment.
+	Config(seg profile.Segment, s models.Settings) ([]byte, error)
+	// ProbeConfig renders a minimal config for measuring: a SOCKS inbound on
+	// 127.0.0.1:port, or the segment's bridge when it is a middle segment.
+	ProbeConfig(seg profile.Segment, port int) ([]byte, error)
 	// Check preflights a config file without starting the proxy.
 	Check(ctx context.Context, in Install, cfgPath string) error
 	Launch(in Install, cfgPath string) Launch

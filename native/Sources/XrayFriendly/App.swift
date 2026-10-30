@@ -5,6 +5,7 @@ import XrayFriendlyCore
 /// What the server editor window edits.
 enum EditorTarget: Codable, Hashable {
     case new
+    case newChain     // opens with "Proxy Chain" selected
     case edit(String) // node ID
 }
 
@@ -93,6 +94,8 @@ struct AppCommands: Commands {
                 .keyboardShortcut("n")
             Button("New Server…") { openWindow(id: "server", value: EditorTarget.new) }
                 .keyboardShortcut("n", modifiers: [.command, .option])
+            Button("New Proxy Chain…") { openWindow(id: "server", value: EditorTarget.newChain) }
+                .keyboardShortcut("n", modifiers: [.command, .option, .shift])
             Button("Add Servers from Clipboard") { openWindow(id: "main"); model.addFromClipboard() }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
         }

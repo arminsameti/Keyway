@@ -107,6 +107,24 @@ public final class APIClient: @unchecked Sendable {
         try await post("/api/nodes/test", NodeInput(name: name, profile: profile), as: TestBody.self, timeout: 60).latencyMs
     }
 
+    // chains: other servers, entry first
+    public func createChain(name: String, hops: [String]) async throws -> Node {
+        try await post("/api/nodes", NodeInput(name: name, chain: hops), as: NodeBody.self).node
+    }
+    public func updateChain(_ id: String, name: String, hops: [String]) async throws -> Node {
+        let data = try await raw("PUT", "/api/nodes/\(id)", body: NodeInput(name: name, chain: hops))
+        return try Self.decoder.decode(NodeBody.self, from: data).node
+    }
+    /// What saving the chain would do: whether it is valid and which engines run it.
+    /// Throws the backend's reason when the chain is not valid.
+    public func planChain(hops: [String]) async throws -> ChainPlan {
+        try await post("/api/chains/plan", ["chain": hops], as: ChainPlanBody.self).plan
+    }
+    /// A chain sets up a tunnel per hop and is measured twice (a warm-up first).
+    public func testChain(hops: [String]) async throws -> Int {
+        try await post("/api/nodes/test", NodeInput(name: "", chain: hops), as: TestBody.self, timeout: 180).latencyMs
+    }
+
     public func refreshSubscription(_ id: String) async throws { _ = try await raw("POST", "/api/subscriptions/\(id)/refresh", body: [String: String](), timeout: 90) }
     public func refreshAllSubscriptions() async throws { _ = try await raw("POST", "/api/subscriptions/refresh", body: [String: String](), timeout: 180) }
     public func deleteSubscription(_ id: String) async throws { _ = try await raw("DELETE", "/api/subscriptions/\(id)") }
@@ -132,14 +150,34 @@ struct JobBody: Decodable { let job: Job }
 struct LatencyBody: Decodable { let latency: [String: Int] }
 struct NodeBody: Decodable { let node: Node }
 struct TestBody: Decodable { let latencyMs: Int }
+struct ChainPlanBody: Decodable { let plan: ChainPlan }
 struct ReleasesBody: Decodable { let releases: [Release] }
 struct PickRequest: Encodable { let reconnect: Bool }
 struct DownloadRequest: Encodable { let version: String; let async: Bool }
-struct NodeInput: Encodable { let name: String; let profile: Profile }
+struct NodeInput: Encodable {
+    let name: String
+    var profile: Profile?
+    var chain: [String]?
+}
+
+public struct ChainPlan: Decodable, Equatable, Sendable {
+    public let engine: String
+    public let engineName: String // every engine, in order: "sing-box + Xray core"
+    public let processes: Int
+    public let installed: Bool
+    public init(engine: String, engineName: String, processes: Int, installed: Bool) {
+        self.engine = engine; self.engineName = engineName; self.processes = processes; self.installed = installed
+    }
+}
 
 public struct PickResult: Decodable, Sendable { public let name: String?; public let latencyMs: Int? }
 public struct ImportResult: Decodable, Sendable { public let added: Int; public let errors: [String] }
-public struct ProfileBody: Decodable, Sendable { public let profile: Profile; public let name: String }
+/// A node in editable form: a server's profile, or a chain's hop IDs.
+public struct ProfileBody: Decodable, Sendable {
+    public let profile: Profile?
+    public let chain: [String]?
+    public let name: String
+}
 public struct LogsBody: Decodable, Sendable { public let logs: [String]; public let next: Int; public let running: Bool }
 
 struct AnyEncodable: Encodable {

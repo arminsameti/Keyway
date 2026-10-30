@@ -4,7 +4,7 @@ BIN     := bin/xray-friendly
 # Separate path: go build refuses to overwrite a lipo'd fat binary.
 UNIBIN  := bin/xray-friendly-universal
 
-.PHONY: build test test-native vet lint smoke run app universal snapshots clean
+.PHONY: build test test-engines test-native vet lint smoke run app universal snapshots clean
 build:
 	@mkdir -p bin
 	go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/xray-friendly
@@ -46,6 +46,14 @@ app: universal
 	codesign --force --sign - $(APP)/Contents/MacOS/XrayFriendly
 	codesign --force --sign - $(APP)
 	codesign --verify --strict $(APP)
+
+# Feed every generated config (all protocols, chains, bridge segments) to the
+# installed real engines: sing-box check and xray -test. Needs both engines
+# downloaded once (Settings > Engines).
+test-engines:
+	SINGBOX_BIN="$$(ls -d $$HOME/.xray-friendly/engines/sing-box/v*/sing-box | tail -1)" \
+	XRAY_BIN="$$(ls -d $$HOME/.xray-friendly/engines/xray/v*/xray | tail -1)" \
+	go test -count=1 -run RealEngine -v ./internal/singbox ./internal/xray
 
 # Render every screen with the mockups' sample data, light and dark, to
 # dist/snapshots/*.png (offscreen; needs no Screen Recording permission).

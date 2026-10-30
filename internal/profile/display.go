@@ -8,7 +8,7 @@ import (
 var protocolNames = map[string]string{
 	VLESS: "VLESS", VMess: "VMess", Trojan: "Trojan", Shadowsocks: "Shadowsocks", SOCKS: "SOCKS",
 	HTTP: "HTTP", Hysteria2: "Hysteria2", WireGuard: "WireGuard", TUIC: "TUIC", Hysteria: "Hysteria",
-	AnyTLS: "AnyTLS", ShadowTLS: "ShadowTLS", Naive: "NaiveProxy", SSH: "SSH",
+	AnyTLS: "AnyTLS", ShadowTLS: "ShadowTLS", Naive: "NaiveProxy", SSH: "SSH", OpenVPN: "OpenVPN", Chain: "Chain",
 }
 
 var transportNames = map[string]string{
@@ -33,12 +33,18 @@ func (p Profile) DisplayTransport() string {
 	}
 	if t == "" {
 		t = "tcp"
+		if p.Protocol == OpenVPN {
+			t = "udp"
+		}
 		if p.UDPBased() {
 			t = "udp"
 			if p.Protocol != WireGuard {
 				t = "quic"
 			}
 		}
+	}
+	if p.Protocol == OpenVPN && p.Transport.Type == "" {
+		t = "udp"
 	}
 	if t == "tcp" && p.Security.Kind == "reality" {
 		return "Reality"
@@ -59,6 +65,12 @@ func (p Profile) DisplaySecurity() string {
 		return p.Cipher
 	case WireGuard:
 		return "Curve25519 keys"
+	case OpenVPN:
+		s := "TLS"
+		if p.OpenVPN != nil && p.OpenVPN.ControlWrap != nil {
+			s += " · " + strings.ReplaceAll(p.OpenVPN.ControlWrap.Type, "_", "-")
+		}
+		return s
 	case ShadowTLS:
 		v := 3
 		if p.ShadowTLS != nil {

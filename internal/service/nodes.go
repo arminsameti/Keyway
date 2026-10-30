@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -16,19 +15,32 @@ import (
 // NodeView is a node plus everything the UI derives from its profile.
 type NodeView struct {
 	models.Node
-	DisplayName     string `json:"displayName"`           // name without a leading flag emoji
-	CountryCode     string `json:"countryCode,omitempty"` // ISO 3166-1 alpha-2, from the name
-	ProtocolName    string `json:"protocolName"`
-	Transport       string `json:"transport"`
-	Security        string `json:"security"`
-	SNI             string `json:"sni"`
-	UDP             bool   `json:"udp"`              // TCP latency tests cannot measure it
-	Engine          string `json:"engine,omitempty"` // engine that would run it
-	EngineName      string `json:"engineName,omitempty"`
-	EngineInstalled bool   `json:"engineInstalled"`
-	EngineReason    string `json:"engineReason,omitempty"` // why no engine can run it
-	HasLink         bool   `json:"hasLink"`
-	Error           string `json:"error,omitempty"` // the stored link/profile no longer parses
+	DisplayName     string    `json:"displayName"`           // name without a leading flag emoji
+	CountryCode     string    `json:"countryCode,omitempty"` // ISO 3166-1 alpha-2, from the name
+	ProtocolName    string    `json:"protocolName"`
+	Transport       string    `json:"transport"`
+	Security        string    `json:"security"`
+	SNI             string    `json:"sni"`
+	UDP             bool      `json:"udp"`              // TCP latency tests cannot measure it
+	RelaysUDP       bool      `json:"relaysUdp"`        // can carry UDP for a following hop of a chain
+	Engine          string    `json:"engine,omitempty"` // engine that would run it
+	EngineName      string    `json:"engineName,omitempty"`
+	EngineInstalled bool      `json:"engineInstalled"`
+	EngineReason    string    `json:"engineReason,omitempty"` // why no engine can run it
+	HasLink         bool      `json:"hasLink"`
+	Error           string    `json:"error,omitempty"` // the stored link/profile no longer parses, or a chain is broken
+	Chain           bool      `json:"chain"`           // a chain of other servers
+	Hops            []HopView `json:"hops,omitempty"`
+}
+
+// HopView is one server of a chain, in the order traffic takes (entry first).
+type HopView struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"` // display name, "" when the server is gone
+	CountryCode  string `json:"countryCode,omitempty"`
+	ProtocolName string `json:"protocolName"`
+	Transport    string `json:"transport"`
+	Missing      bool   `json:"missing"`
 }
 
 func (s *Service) nodeViews(d models.AppData) []NodeView {
@@ -42,12 +54,16 @@ func (s *Service) nodeViews(d models.AppData) []NodeView {
 func (s *Service) nodeView(d models.AppData, n models.Node) NodeView {
 	v := NodeView{Node: n, HasLink: n.RawLink != "", ProtocolName: profile.ProtocolName(n.Protocol)}
 	v.CountryCode, v.DisplayName = profile.SplitCountry(n.Name)
+	if n.Protocol == profile.Chain {
+		return s.chainView(d, v)
+	}
 	p, err := link.NodeProfile(n.RawLink, n.Profile)
 	if err != nil {
 		v.Error = err.Error()
 		return v
 	}
 	v.Transport, v.Security, v.SNI, v.UDP = p.DisplayTransport(), p.DisplaySecurity(), p.DisplaySNI(), p.UDPBased()
+	v.RelaysUDP = profile.RelaysUDP(p)
 	e, err := engine.Candidate(p, d.Settings.EnginePreference, s.engineList())
 	if err != nil {
 		v.EngineReason = err.Error()
@@ -65,6 +81,7 @@ type NodeInput struct {
 	Name    string           `json:"name"`
 	Link    string           `json:"link,omitempty"`
 	Profile *profile.Profile `json:"profile,omitempty"`
+	Chain   []string         `json:"chain,omitempty"` // hop node IDs, entry first: a chain of other servers
 }
 
 func (in NodeInput) build() (link.Result, error) {
@@ -95,6 +112,9 @@ var ErrDuplicateNode = &models.ValidationError{Msg: "this server is already in t
 
 // CreateNode adds one manually entered server.
 func (s *Service) CreateNode(in NodeInput) (NodeView, error) {
+	if len(in.Chain) > 0 {
+		return s.createChain(in)
+	}
 	res, err := in.build()
 	if err != nil {
 		return NodeView{}, err
@@ -116,6 +136,9 @@ func (s *Service) CreateNode(in NodeInput) (NodeView, error) {
 // UpdateNode replaces a node's server details, keeping its ID, source and
 // position, so the active selection and the subscription grouping survive.
 func (s *Service) UpdateNode(id string, in NodeInput) (NodeView, error) {
+	if len(in.Chain) > 0 {
+		return s.updateChain(id, in)
+	}
 	res, err := in.build()
 	if err != nil {
 		return NodeView{}, err
@@ -143,20 +166,25 @@ func (s *Service) UpdateNode(id string, in NodeInput) (NodeView, error) {
 	return s.nodeView(d, out), nil
 }
 
-// TestServer measures one server that is not saved yet ("Test Connection"):
-// a real request through a temporary engine instance.
+// TestServer measures one server or chain that is not saved yet ("Test
+// Connection"): a real request through temporary engine instances.
 func (s *Service) TestServer(ctx context.Context, in NodeInput) (int64, error) {
-	res, err := in.build()
+	d := s.store.Get()
+	hops, names, err := s.hopsFromInput(d, in)
 	if err != nil {
 		return 0, err
 	}
-	e, inst, err := s.resolveFor(res.Profile, s.store.Get())
+	pl, err := s.planFor(hops, names, d)
 	if err != nil {
 		return 0, err
 	}
-	ms, err := s.probe(ctx, e, inst, res.Profile)
+	ms, err := s.probe(ctx, pl)
 	if err != nil {
-		return 0, fmt.Errorf("the server did not answer through %s: %w", e.DisplayName(), err)
+		what := "the server"
+		if len(hops) > 1 {
+			what = "the chain"
+		}
+		return 0, fmt.Errorf("%s did not answer through %s: %w", what, engine.EngineNames(pl.steps), err)
 	}
 	return ms, nil
 }
@@ -183,24 +211,6 @@ func (s *Service) slot(name string) (EngineSlot, bool) {
 func (s *Service) installed(name string) bool {
 	sl, ok := s.slot(name)
 	return ok && len(sl.Manager.Installed()) > 0
-}
-
-// resolveFor picks the engine for a profile and the installed version to run.
-func (s *Service) resolveFor(p profile.Profile, d models.AppData) (engine.Engine, engine.Install, error) {
-	e, err := engine.Select(p, d.Settings.EnginePreference, s.engineList(), s.installed)
-	var ni *engine.NotInstalledError
-	if errors.As(err, &ni) {
-		return nil, engine.Install{}, fmt.Errorf("%w: %w", core.ErrNotInstalled, ni)
-	}
-	if err != nil {
-		return nil, engine.Install{}, &models.ValidationError{Msg: err.Error()}
-	}
-	sl, _ := s.slot(e.Name())
-	bin, dir, ver, err := sl.Manager.Resolve(d.Engines[e.Name()])
-	if err != nil {
-		return nil, engine.Install{}, err
-	}
-	return e, engine.Install{Version: ver, Bin: bin, AssetDir: dir}, nil
 }
 
 // syncTags tells tag-aware engines (sing-box) which build tags their active
@@ -278,23 +288,64 @@ func (s *Service) fetchEnginesFor(nodes []models.Node) {
 // ParseLink returns the profile and name of a share link or a WireGuard
 // .conf file (to fill a form).
 func (s *Service) ParseLink(raw string) (profile.Profile, string, error) {
+	raw = strings.TrimSpace(raw)
+	if link.LooksLikeOVPN(raw) {
+		// Unvalidated: the form shows what is missing (e.g. credentials) instead of refusing.
+		p, name, err := link.ParseOVPNProfile(raw)
+		if err != nil {
+			return profile.Profile{}, "", &models.ValidationError{Msg: err.Error()}
+		}
+		return p, name, nil
+	}
 	parse := link.Parse
 	if link.LooksLikeWireGuardConf(raw) {
 		parse = func(t string) (link.Result, error) { return link.ParseWireGuardConf(t, "") }
 	}
-	res, err := parse(strings.TrimSpace(raw))
+	res, err := parse(raw)
 	if err != nil {
 		return profile.Profile{}, "", &models.ValidationError{Msg: err.Error()}
 	}
 	return res.Profile, res.Node.Name, nil
 }
 
-// NodeProfile returns the stored profile of a node (to edit it).
-func (s *Service) NodeProfile(id string) (profile.Profile, string, error) {
-	n, ok := s.store.Get().FindNode(id)
-	if !ok {
-		return profile.Profile{}, "", ErrNodeNotFound
+// chainView fills the derived fields of a chain node.
+func (s *Service) chainView(d models.AppData, v NodeView) NodeView {
+	v.Chain, v.ProtocolName = true, profile.ProtocolName(profile.Chain)
+	v.Transport, v.Security, v.SNI = fmt.Sprintf("%d hops", len(v.Node.Chain)), "—", "—"
+	v.UDP = true // a TCP dial to the entry says nothing about the whole chain: use the real test
+	for _, id := range v.Node.Chain {
+		hv := HopView{ID: id, Missing: true}
+		if h, ok := d.FindNode(id); ok {
+			hv.Missing = false
+			hv.CountryCode, hv.Name = profile.SplitCountry(h.Name)
+			hv.ProtocolName = profile.ProtocolName(h.Protocol)
+			if hp, err := link.NodeProfile(h.RawLink, h.Profile); err == nil {
+				hv.Transport = hp.DisplayTransport()
+			}
+		}
+		v.Hops = append(v.Hops, hv)
 	}
-	p, err := link.NodeProfile(n.RawLink, n.Profile)
-	return p, n.Name, err
+	hops, names, err := s.resolveHops(d, v.Node)
+	if err != nil {
+		v.Error = err.Error()
+		return v
+	}
+	if err := profile.CheckChain(hops, names); err != nil {
+		v.Error = err.Error()
+		return v
+	}
+	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true })
+	if err != nil {
+		v.EngineReason = err.Error()
+		return v
+	}
+	v.Engine = steps[len(steps)-1].Engine.Name()
+	v.EngineName = engine.EngineNames(steps)
+	v.EngineInstalled = true
+	for _, st := range steps {
+		if !s.installed(st.Engine.Name()) {
+			v.EngineInstalled = false
+		}
+	}
+	return v
 }

@@ -33,6 +33,89 @@ func Supports(p profile.Profile) error {
 	return nil
 }
 
+// tcpHop reports whether the hop is a TCP-stream proxy, the only kind Xray can
+// chain: a hop dials through the previous one with sockopt.dialerProxy, which
+// needs both ends to be TCP streams.
+func tcpHop(p profile.Profile) bool {
+	switch p.Protocol {
+	case profile.VLESS, profile.VMess, profile.Trojan, profile.Shadowsocks, profile.SOCKS, profile.HTTP:
+		return p.Transport.Type != "kcp"
+	}
+	return false
+}
+
+// SupportsSegment reports whether one Xray process can run the hops as a
+// chain, dialing the first through an upstream bridge when hasUpstream.
+func SupportsSegment(hops []profile.Profile, hasUpstream bool) error {
+	for i, h := range hops {
+		if err := Supports(h); err != nil {
+			return err
+		}
+		chained := len(hops) > 1 || (hasUpstream && i == 0)
+		if chained && !tcpHop(h) {
+			return fmt.Errorf("Xray can only chain TCP-based protocols, not %s", profile.ProtocolName(h.Protocol))
+		}
+	}
+	return nil
+}
+
+// bridgeTag is the outbound that reaches the previous segment's bridge.
+const bridgeTag = "bridge"
+
+func hopTag(i, n int) string {
+	if i == n-1 {
+		return "proxy"
+	}
+	return fmt.Sprintf("hop-%d", i)
+}
+
+// chainOutbound renders one hop; dialer is the tag of the outbound it dials
+// through ("" = directly).
+func chainOutbound(p profile.Profile, tag, dialer string) (Outbound, error) {
+	ob, err := FromProfile(p)
+	if err != nil {
+		return Outbound{}, err
+	}
+	ob.Tag, ob.Mux = tag, nil
+	if dialer != "" {
+		if ob.StreamSettings == nil {
+			ob.StreamSettings = &StreamSettings{Network: "tcp"}
+		}
+		ob.StreamSettings.Sockopt = &Sockopt{DialerProxy: dialer}
+	}
+	return ob, nil
+}
+
+// segmentOutbounds renders the hops of a segment. The exit hop comes first:
+// Xray sends traffic that matches no rule to the first outbound.
+func segmentOutbounds(seg profile.Segment) ([]Outbound, error) {
+	n := len(seg.Hops)
+	if n == 0 {
+		return nil, fmt.Errorf("a segment needs at least one hop")
+	}
+	if err := SupportsSegment(seg.Hops, seg.Upstream != nil); err != nil {
+		return nil, err
+	}
+	var bridge []Outbound
+	dialer := ""
+	if u := seg.Upstream; u != nil {
+		bridge = []Outbound{{Tag: bridgeTag, Protocol: "socks", Settings: &ServersSettings{Servers: []Server{{
+			Address: "127.0.0.1", Port: u.Port, Users: []Account{{User: u.User, Pass: u.Pass}}}}}}}
+		dialer = bridgeTag
+	}
+	hops := make([]Outbound, n)
+	for i, h := range seg.Hops {
+		ob, err := chainOutbound(h, hopTag(i, n), dialer)
+		if err != nil {
+			return nil, err
+		}
+		hops[i], dialer = ob, ob.Tag
+	}
+	out := []Outbound{hops[n-1]}
+	out = append(out, hops[:n-1]...)
+	return append(out, bridge...), nil
+}
+
 // FromProfile maps an engine-neutral profile onto a typed Xray outbound.
 func FromProfile(p profile.Profile) (Outbound, error) {
 	if err := p.Validate(); err != nil {

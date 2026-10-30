@@ -9,37 +9,45 @@ import (
 
 var defaultDNS = []string{"1.1.1.1", "8.8.8.8", "localhost"}
 
-// BuildConfig renders the Xray configuration for the given server and settings.
-// The settings are validated first, so a config that cannot work is never written.
-func BuildConfig(p profile.Profile, s models.Settings) (*Config, error) {
+// BuildConfig renders the Xray configuration of one segment. The last segment
+// of a chain carries the user's inbounds and routing; a segment with Listen set
+// is a middle segment and only exposes its exit on that bridge. The settings
+// are validated first, so a config that cannot work is never written.
+func BuildConfig(seg profile.Segment, s models.Settings) (*Config, error) {
 	if err := s.Validate(); err != nil {
 		return nil, err
 	}
-	proxy, err := FromProfile(p)
+	outs, err := segmentOutbounds(seg)
 	if err != nil {
 		return nil, err
 	}
-	proxy.Tag = "proxy"
-	proxy.Mux = nil
-	if s.Mux && proxy.MuxCapable() {
-		proxy.Mux = &Mux{Enabled: true, Concurrency: s.MuxConcurrency}
-	}
-
 	dns := s.DNS
 	if len(dns) == 0 {
 		dns = defaultDNS
 	}
-	return &Config{
-		Log:      LogConfig{LogLevel: s.LogLevel},
-		DNS:      &DNS{Servers: dns},
-		Inbounds: buildInbounds(s),
-		Outbounds: []Outbound{
-			proxy,
-			{Tag: "direct", Protocol: "freedom"},
-			{Tag: "block", Protocol: "blackhole"},
-		},
-		Routing: Routing{DomainStrategy: "IPIfNonMatch", Rules: buildRules(s)},
-	}, nil
+	cfg := &Config{
+		Log: LogConfig{LogLevel: s.LogLevel},
+		DNS: &DNS{Servers: dns},
+		Outbounds: append(outs,
+			Outbound{Tag: "direct", Protocol: "freedom"},
+			Outbound{Tag: "block", Protocol: "blackhole"}),
+	}
+	if seg.Listen != nil {
+		cfg.Inbounds = []Inbound{bridgeInbound(*seg.Listen)}
+		cfg.Routing = Routing{DomainStrategy: "AsIs", Rules: []Rule{}}
+		return cfg, nil
+	}
+	if s.Mux && cfg.Outbounds[0].MuxCapable() {
+		cfg.Outbounds[0].Mux = &Mux{Enabled: true, Concurrency: s.MuxConcurrency}
+	}
+	cfg.Inbounds = buildInbounds(s)
+	cfg.Routing = Routing{DomainStrategy: "IPIfNonMatch", Rules: buildRules(s)}
+	return cfg, nil
+}
+
+func bridgeInbound(b profile.Bridge) Inbound {
+	return Inbound{Tag: "bridge-in", Protocol: "socks", Listen: "127.0.0.1", Port: b.Port,
+		Settings: &SocksInbound{Auth: "password", Accounts: []Account{{User: b.User, Pass: b.Pass}}}}
 }
 
 func buildInbounds(s models.Settings) []Inbound {
@@ -135,21 +143,22 @@ func (c *Config) UsesGeoData() bool {
 	return false
 }
 
-// ProbeConfig is a minimal config exposing one SOCKS inbound on 127.0.0.1:port,
-// used to measure a node through a real Xray instance.
-func ProbeConfig(p profile.Profile, port int) (*Config, error) {
-	proxy, err := FromProfile(p)
+// ProbeConfig is a minimal config used to measure a node through a real Xray
+// instance: a middle segment exposes its bridge, the last segment a SOCKS
+// inbound on 127.0.0.1:port.
+func ProbeConfig(seg profile.Segment, port int) (*Config, error) {
+	outs, err := segmentOutbounds(seg)
 	if err != nil {
 		return nil, err
 	}
-	proxy.Tag = "proxy"
+	in := Inbound{Tag: "probe", Protocol: "socks", Listen: "127.0.0.1", Port: port, Settings: &SocksInbound{Auth: "noauth"}}
+	if seg.Listen != nil {
+		in = bridgeInbound(*seg.Listen)
+	}
 	return &Config{
-		Log: LogConfig{LogLevel: "none"},
-		Inbounds: []Inbound{{
-			Tag: "probe", Protocol: "socks", Listen: "127.0.0.1", Port: port,
-			Settings: &SocksInbound{Auth: "noauth"},
-		}},
-		Outbounds: []Outbound{proxy},
+		Log:       LogConfig{LogLevel: "none"},
+		Inbounds:  []Inbound{in},
+		Outbounds: outs,
 		Routing:   Routing{DomainStrategy: "AsIs", Rules: []Rule{}},
 	}, nil
 }

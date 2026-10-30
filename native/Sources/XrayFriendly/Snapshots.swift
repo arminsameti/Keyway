@@ -40,6 +40,14 @@ enum Snapshots {
                    CGSize(width: 580, height: 660), appearance, dir)
             render(NewServerView(target: .new, initialProtocol: "tuic").environment(connected), "newserver-\(suffix)",
                    CGSize(width: 760, height: 720), appearance, dir)
+            render(NewServerView(target: .new, initialProtocol: "openvpn").environment(connected), "newserver-openvpn-\(suffix)",
+                   CGSize(width: 760, height: 720), appearance, dir)
+            let chainModel = AppModel(); chainModel.loadSample(connected: true); chainModel.selectChain()
+            render(MainView().environment(chainModel), "main-chain-\(suffix)", CGSize(width: 1240, height: 780), appearance, dir)
+            let sample = (chain: ChainForm(name: "", hops: ["ovpn1", "fra1", "wg1"]),
+                          plan: ChainPlan(engine: "sing-box", engineName: "sing-box", processes: 1, installed: true))
+            render(NewServerView(target: .newChain, sampleChain: sample).environment(connected), "newserver-chain-\(suffix)",
+                   CGSize(width: 760, height: 720), appearance, dir)
             render(SettingsView(tab: "engines").environment(connected), "settings-engines-\(suffix)", CGSize(width: 760, height: 640), appearance, dir)
             render(OnboardingView().environment(onboarding), "onboarding-\(suffix)", CGSize(width: 720, height: 640), appearance, dir)
         }

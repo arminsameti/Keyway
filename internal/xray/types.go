@@ -150,6 +150,13 @@ type StreamSettings struct {
 	H2          *H2Settings          `json:"httpSettings,omitempty"`
 	KCP         *KCPSettings         `json:"kcpSettings,omitempty"`
 	Hysteria    *HysteriaStream      `json:"hysteriaSettings,omitempty"`
+	Sockopt     *Sockopt             `json:"sockopt,omitempty"`
+}
+
+// Sockopt carries the one socket option this app uses: dialing an outbound
+// through another outbound (a chain hop).
+type Sockopt struct {
+	DialerProxy string `json:"dialerProxy,omitempty"`
 }
 
 type TLSSettings struct {

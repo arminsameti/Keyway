@@ -138,7 +138,7 @@ final class FormTests: XCTestCase {
             XCTAssertEqual(titles.prefix(2), ["Server", "Authentication"], d.id)
         }
         XCTAssertEqual(ServerForms.all.filter { $0.engine == "sing-box" }.map(\.label),
-                       ["TUIC v5", "Hysteria", "AnyTLS", "ShadowTLS", "NaiveProxy", "SSH"])
+                       ["TUIC v5", "Hysteria", "AnyTLS", "ShadowTLS", "NaiveProxy", "SSH", "OpenVPN"])
     }
 }
 
