@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Xray Friendly — Menu bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#0064D2}a:hover{color:#004FA6}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 400px; height: 640px; box-sizing: border-box; background: {{c.desk}}; padding: 14px 30px; font-family: -apple-system, 'SF Pro Text', system-ui, 'Helvetica Neue', sans-serif; font-size: 13px; color: {{c.text}}; -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; align-items: flex-end">
+  <div style="width: 28px; height: 22px; border-radius: 5px; background: {{c.hl}}; display: flex; align-items: center; justify-content: center; margin-right: 24px; color: {{c.text}}" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 4 5.5v6c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10v-6z"></path><sc-if value="{{connected}}" hint-placeholder-val="{{ true }}"><path d="m8.5 12 2.5 2.5 4.5-5"></path></sc-if></svg>
+  </div>
+
+  <div role="dialog" aria-label="Xray Friendly" style="margin-top: 6px; width: 340px; border-radius: 12px; background: {{c.pop}}; border: 1px solid {{c.popBorder}}; box-shadow: 0 12px 40px rgba(0,0,0,0.22), 0 0 0 0.5px rgba(0,0,0,0.12); padding: 6px; display: flex; flex-direction: column; box-sizing: border-box">
+
+    <!-- Status + toggle -->
+    <div style="display: flex; align-items: center; gap: 12px; padding: 12px 10px 12px 12px">
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+        <span style="font-size: 15px; font-weight: 700">{{title}}</span>
+        <span style="font-size: 12px; color: {{c.sub}}">{{sub}}</span>
+      </div>
+      <button onClick="{{toggle}}" role="switch" aria-checked="{{connected}}" aria-label="Connection" style="width: 46px; height: 26px; border-radius: 13px; border: 0; padding: 0; background: {{swBg}}; position: relative; flex-shrink: 0">
+        <span style="position: absolute; top: 2px; left: {{swKnob}}; width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(0,0,0,0.3)"></span>
+      </button>
+    </div>
+
+    <div style="height: 1px; background: {{c.sep}}; margin: 0 10px"></div>
+
+    <!-- Server picker -->
+    <div style="padding: 8px 12px 4px; font-size: 11px; font-weight: 600; color: {{c.sub}}">Server</div>
+    <button onClick="{{pickAuto}}" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 8px; border: 0; border-radius: 6px; background: {{autoBg}}; color: {{c.text}}; font-size: 13px; text-align: left">
+      <span style="width: 16px; display: flex; justify-content: center; color: {{c.text}}" aria-hidden="true"><sc-if value="{{auto}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m2 6.5 2.5 2.5L10 3"></path></svg></sc-if></span>
+      <span style="flex: 1">Choose Fastest Automatically</span>
+    </button>
+    <sc-for list="{{servers}}" as="s" hint-placeholder-count="5">
+      <button onClick="{{s.pick}}" aria-pressed="{{s.on}}" style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 8px; border: 0; border-radius: 6px; background: transparent; color: {{c.text}}; font-size: 13px; text-align: left">
+        <span style="width: 16px; display: flex; justify-content: center" aria-hidden="true"><sc-if value="{{s.on}}" hint-placeholder-val="{{ false }}"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m2 6.5 2.5 2.5L10 3"></path></svg></sc-if></span>
+        <span style="font-size: 10px; font-weight: 700; color: {{c.sub}}; width: 18px">{{s.cc}}</span>
+        <span style="flex: 1">{{s.name}}</span>
+        <span style="font-size: 12px; font-variant-numeric: tabular-nums; color: {{s.fg}}">{{s.lat}}</span>
+      </button>
+    </sc-for>
+    <button style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 32px; border: 0; border-radius: 6px; background: transparent; color: {{c.text}}; font-size: 13px; text-align: left">
+      <span style="flex: 1">All Servers</span>
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m3.5 2 3 3-3 3"></path></svg>
+    </button>
+
+    <div style="height: 1px; background: {{c.sep}}; margin: 6px 10px"></div>
+
+    <!-- Toggles -->
+    <div style="display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 12px">
+      <span style="flex: 1">System Proxy</span>
+      <button onClick="{{toggleSys}}" role="switch" aria-checked="{{sys}}" aria-label="System proxy" style="width: 32px; height: 19px; border-radius: 10px; border: 0; padding: 0; background: {{sysBg}}; position: relative">
+        <span style="position: absolute; top: 2px; left: {{sysKnob}}; width: 15px; height: 15px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,0.3)"></span>
+      </button>
+    </div>
+    <div style="padding: 0 12px 8px; font-size: 11px; color: {{c.sub}}; line-height: 1.4">SOCKS 127.0.0.1:10808 · HTTP 127.0.0.1:10809</div>
+
+    <div style="height: 1px; background: {{c.sep}}; margin: 0 10px 4px"></div>
+
+    <!-- Menu commands -->
+    <sc-for list="{{cmds}}" as="m" hint-placeholder-count="4">
+      <button style="display: flex; align-items: center; height: 28px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: {{c.text}}; font-size: 13px; text-align: left">
+        <span style="flex: 1">{{m.label}}</span>
+        <span style="color: {{c.sub}}; font-size: 12px">{{m.key}}</span>
+      </button>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"dark":{"editor":"boolean","default":false},"$preview":{"width":400,"height":640}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { connected: true, sel: 'fra1', auto: false, sys: true };
+  }
+  renderVals() {
+    const dark = this.props.dark ?? false;
+    const c = dark
+      ? { desk: '#3A3F4B', hl: 'rgba(255,255,255,0.22)', pop: '#2A2A2D', popBorder: '#4A4A4F', text: '#F2F2F7', sub: '#A1A1A8', sep: '#424247', sel: 'rgba(255,255,255,0.10)' }
+      : { desk: '#D9DEE6', hl: 'rgba(0,0,0,0.12)', pop: '#F7F7F9', popBorder: '#D3D3D8', text: '#1D1D1F', sub: '#6E6E73', sep: '#DEDEE3', sel: 'rgba(0,0,0,0.06)' };
+    const green = dark ? '#30D158' : '#28A745';
+    const greenText = dark ? '#5BDB7A' : '#1A7F37';
+    const orangeText = dark ? '#FFB25C' : '#A64B00';
+    const list = [
+      { id: 'home', cc: 'CA', name: 'Home server', ms: 24 },
+      { id: 'fra1', cc: 'DE', name: 'Frankfurt 01', ms: 48 },
+      { id: 'ams2', cc: 'NL', name: 'Amsterdam 02', ms: 62 },
+      { id: 'hel1', cc: 'FI', name: 'Helsinki', ms: 71 },
+      { id: 'ist1', cc: 'TR', name: 'Istanbul', ms: 118 }
+    ];
+    const { connected, sel, auto, sys } = this.state;
+    const cur = list.find((s) => s.id === (auto ? 'home' : sel)) || list[1];
+    return {
+      c, connected, auto, sys,
+      title: connected ? 'Connected' : 'Not Connected',
+      sub: connected ? cur.name + ' · ' + cur.ms + ' ms · 00:14:32' : 'Traffic is going out directly',
+      swBg: connected ? green : (dark ? '#5A5A5F' : '#C7C7CC'),
+      swKnob: connected ? '22px' : '2px',
+      toggle: () => this.setState({ connected: !connected }),
+      autoBg: 'transparent',
+      pickAuto: () => this.setState({ auto: !auto }),
+      servers: list.map((s) => ({ ...s, on: !auto && s.id === sel, lat: s.ms + ' ms', fg: s.ms < 100 ? greenText : orangeText,
+        pick: () => this.setState({ sel: s.id, auto: false, connected: true }) })),
+      sysBg: sys ? green : (dark ? '#5A5A5F' : '#C7C7CC'),
+      sysKnob: sys ? '15px' : '2px',
+      toggleSys: () => this.setState({ sys: !sys }),
+      cmds: [
+        { label: 'Test Latency', key: '⌘T' },
+        { label: 'Add Servers from Clipboard', key: '⇧⌘V' },
+        { label: 'Open Xray Friendly…', key: '⌘O' },
+        { label: 'Settings…', key: '⌘,' },
+        { label: 'Quit Xray Friendly', key: '⌘Q' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

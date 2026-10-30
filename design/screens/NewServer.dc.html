@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>New Server</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#0064D2}a:hover{color:#004FA6}
+button,input,select{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 760px; height: 720px; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; border: 1px solid #C9C9CE; background: #FFFFFF; font-family: -apple-system, 'SF Pro Text', system-ui, 'Helvetica Neue', sans-serif; font-size: 13px; color: #1D1D1F; -webkit-font-smoothing: antialiased">
+  <!-- Title bar -->
+  <div style="height: 40px; flex-shrink: 0; display: flex; align-items: center; padding: 0 14px; border-bottom: 1px solid #E5E5EA; background: #F6F6F8; position: relative">
+    <div style="display: flex; gap: 8px" aria-hidden="true">
+      <span style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57"></span>
+      <span style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E"></span>
+      <span style="width: 12px; height: 12px; border-radius: 50%; background: #28C840"></span>
+    </div>
+    <h1 style="position: absolute; left: 0; right: 0; text-align: center; margin: 0; font-size: 13px; font-weight: 700; pointer-events: none">New Server</h1>
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: flex">
+    <!-- Protocol picker -->
+    <div role="listbox" aria-label="Protocol" style="width: 210px; flex-shrink: 0; background: #F2F2F5; border-right: 1px solid #E2E2E7; padding: 12px 8px; overflow: auto; display: flex; flex-direction: column; gap: 1px; box-sizing: border-box">
+      <sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+        <div style="font-size: 11px; font-weight: 600; color: #6E6E73; padding: 10px 10px 5px">{{g.name}}</div>
+        <sc-for list="{{g.items}}" as="p" hint-placeholder-count="6">
+          <button role="option" aria-selected="{{p.on}}" onClick="{{p.pick}}" style="display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 10px; border: 0; border-radius: 7px; background: {{p.bg}}; color: {{p.fg}}; text-align: left; cursor: default">
+            <span style="font-size: 13px; font-weight: 600">{{p.label}}</span>
+            <span style="font-size: 11px; color: {{p.sub}}">{{p.hint}}</span>
+          </button>
+        </sc-for>
+      </sc-for>
+    </div>
+
+    <!-- Form -->
+    <div style="flex: 1; min-width: 0; overflow: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 16px; box-sizing: border-box">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px">
+          <h2 style="margin: 0; font-size: 17px; font-weight: 700">{{cur.label}}</h2>
+          <span style="font-size: 12px; color: #6E6E73">{{cur.about}}</span>
+        </div>
+        <span style="font-size: 11px; font-weight: 600; color: {{cur.engFg}}; background: {{cur.engBg}}; border-radius: 6px; padding: 4px 8px; white-space: nowrap">{{cur.engine}}</span>
+      </div>
+
+      <sc-for list="{{sections}}" as="s" hint-placeholder-count="3">
+        <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 6px">
+          <legend style="padding: 0 0 6px; font-size: 12px; font-weight: 600; color: #48484D">{{s.title}}</legend>
+          <div style="border: 1px solid #E5E5EA; border-radius: 10px; background: #FBFBFC; display: flex; flex-direction: column">
+            <sc-for list="{{s.fields}}" as="f" hint-placeholder-count="3">
+              <label style="display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 12px; border-top: {{f.sep}}">
+                <span style="flex: 1; font-size: 13px">{{f.label}}</span>
+                <sc-if value="{{f.isSelect}}" hint-placeholder-val="{{ false }}">
+                  <select style="width: 250px; height: 24px; border-radius: 6px; border: 1px solid #D5D5DA; background: #FFFFFF; font-size: 13px; color: #1D1D1F; padding: 0 6px"><option>{{f.ph}}</option></select>
+                </sc-if>
+                <sc-if value="{{f.isText}}" hint-placeholder-val="{{ true }}">
+                  <input type="{{f.type}}" placeholder="{{f.ph}}" style="width: 250px; height: 24px; box-sizing: border-box; border-radius: 6px; border: 1px solid #D5D5DA; background: #FFFFFF; font-size: {{f.size}}; font-family: {{f.font}}; color: #1D1D1F; padding: 0 8px; text-align: left">
+                </sc-if>
+                <sc-if value="{{f.isToggle}}" hint-placeholder-val="{{ false }}">
+                  <input type="checkbox" style="width: 14px; height: 14px; margin: 0; accent-color: #0064D2">
+                </sc-if>
+              </label>
+            </sc-for>
+          </div>
+          <sc-if value="{{s.hasNote}}" hint-placeholder-val="{{ false }}"><span style="font-size: 11px; color: #6E6E73; line-height: 1.4; padding: 0 2px">{{s.note}}</span></sc-if>
+        </fieldset>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div style="flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid #E5E5EA; background: #F6F6F8">
+    <button style="height: 28px; padding: 0 12px; border-radius: 7px; border: 1px solid #D5D5DA; background: #FFFFFF; font-size: 13px; color: #1D1D1F">Test Connection</button>
+    <span style="font-size: 12px; color: #6E6E73">Paste a link anywhere in this window to fill the form</span>
+    <span style="flex: 1"></span>
+    <a href="Import.dc.html" style="height: 28px; padding: 0 14px; border-radius: 7px; border: 1px solid #D5D5DA; background: #FFFFFF; font-size: 13px; color: #1D1D1F; text-decoration: none; display: flex; align-items: center; box-sizing: border-box">Cancel</a>
+    <a href="Main.dc.html" style="height: 28px; padding: 0 14px; border-radius: 7px; border: 1px solid #0064D2; background: #0064D2; font-size: 13px; font-weight: 600; color: #FFFFFF; text-decoration: none; display: flex; align-items: center; box-sizing: border-box">Add Server</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":760,"height":720}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { p: 'tuic' };
+  }
+  renderVals() {
+    const T = (label, ph, o) => ({ kind: 'text', label, ph, ...(o || {}) });
+    const P = (label, ph) => ({ kind: 'select', label, ph });
+    const B = (label) => ({ kind: 'toggle', label });
+    const pw = (label) => T(label || 'Password', 'Required', { secret: true });
+    const X = 'Xray core', SB = 'sing-box';
+    const defs = [
+      { k: 'vless', label: 'VLESS', hint: 'Reality, Vision, XHTTP', eng: X, transport: true, about: 'Lightweight, the usual choice with Reality or TLS.', auth: [T('UUID', '00000000-0000-0000-0000-000000000000', { mono: true }), P('Flow', 'xtls-rprx-vision'), P('Encryption', 'none')] },
+      { k: 'vmess', label: 'VMess', hint: 'Classic V2Ray', eng: X, transport: true, about: 'Older V2Ray protocol with built-in encryption.', auth: [T('UUID', '00000000-0000-0000-0000-000000000000', { mono: true }), T('Alter ID', '0'), P('Cipher', 'auto')] },
+      { k: 'trojan', label: 'Trojan', hint: 'Looks like HTTPS', eng: X, transport: true, about: 'Password protocol that looks like a normal HTTPS site.', auth: [pw()] },
+      { k: 'ss', label: 'Shadowsocks', hint: 'Incl. 2022 ciphers', eng: X, about: 'Simple and fast; use a 2022-blake3 cipher.', auth: [P('Method', '2022-blake3-aes-128-gcm'), pw(), P('Plugin', 'None')] },
+      { k: 'hy2', label: 'Hysteria2', hint: 'QUIC, lossy networks', eng: X, tls: true, udp: true, about: 'QUIC-based; fast on lossy or congested networks.', auth: [pw(), P('Obfuscation', 'None'), T('Upload / Download', '50 / 200 Mbps')] },
+      { k: 'wg', label: 'WireGuard', hint: 'Full tunnel, UDP', eng: X, udp: true, about: 'Modern VPN protocol. Paste a .conf file to fill this in.', auth: [T('Private key', 'Base64 key', { secret: true, mono: true }), T('Peer public key', 'Base64 key', { mono: true }), T('Pre-shared key', 'Optional', { secret: true, mono: true }), T('Local address', '10.7.0.2/32, fd00::2/128', { mono: true }), T('MTU', '1420'), T('Reserved bytes', 'Optional, e.g. 0,0,0')] },
+      { k: 'socks', label: 'SOCKS5', hint: 'Upstream proxy', eng: X, about: 'Chain through another SOCKS5 proxy.', auth: [T('Username', 'Optional'), pw('Password')] },
+      { k: 'http', label: 'HTTP / HTTPS', hint: 'Upstream proxy', eng: X, about: 'Chain through an HTTP CONNECT proxy, optionally over TLS.', auth: [T('Username', 'Optional'), pw('Password'), B('Connect over TLS (HTTPS proxy)')] },
+      { k: 'tuic', label: 'TUIC v5', hint: 'QUIC, low latency', eng: SB, tls: true, udp: true, about: 'QUIC proxy with 0-RTT and native UDP relay.', auth: [T('UUID', '00000000-0000-0000-0000-000000000000', { mono: true }), pw(), P('Congestion control', 'BBR'), P('UDP relay mode', 'Native'), B('Zero-RTT handshake')] },
+      { k: 'hy1', label: 'Hysteria', hint: 'Version 1', eng: SB, tls: true, udp: true, about: 'The original Hysteria. Prefer Hysteria2 for new servers.', auth: [T('Auth string', 'Required', { secret: true }), T('Upload / Download', '50 / 200 Mbps'), T('Obfuscation password', 'Optional', { secret: true })] },
+      { k: 'anytls', label: 'AnyTLS', hint: 'TLS fingerprint-resistant', eng: SB, tls: true, about: 'Reduces TLS-in-TLS fingerprints with padding.', auth: [pw(), T('Idle session timeout', '30 s')] },
+      { k: 'stls', label: 'ShadowTLS', hint: 'Wraps Shadowsocks', eng: SB, about: 'Borrows a real site’s TLS handshake, then runs Shadowsocks inside.', auth: [P('Version', '3'), pw('ShadowTLS password'), T('Handshake server', 'www.example.com:443'), P('Inner method', '2022-blake3-aes-128-gcm'), pw('Inner password')] },
+      { k: 'naive', label: 'NaiveProxy', hint: 'Chrome network stack', eng: SB, tls: true, about: 'HTTP/2 proxy that looks like Chrome talking to a website.', auth: [T('Username', 'Required'), pw(), T('Extra headers', 'Optional')] },
+      { k: 'ssh', label: 'SSH', hint: 'Tunnel via any SSH host', eng: SB, about: 'Use any server you can SSH into as a proxy.', auth: [T('User', 'root'), P('Authentication', 'Private key'), T('Private key file', '~/.ssh/id_ed25519', { mono: true }), T('Host key', 'Optional, pins the server', { mono: true })] }
+    ];
+    const cur0 = defs.find((d) => d.k === this.state.p) || defs[0];
+    const isSB = cur0.eng === SB;
+    const cur = { ...cur0, engine: isSB ? 'Runs on sing-box 1.12' : 'Runs on Xray core 25.10', engFg: isSB ? '#5B36B5' : '#0057B8', engBg: isSB ? '#EFEAFB' : '#E6F0FC' };
+    const mk = (fields) => fields.map((f, i) => ({ ...f, sep: i === 0 ? '0' : '1px solid #EDEDF0', isText: f.kind === 'text', isSelect: f.kind === 'select', isToggle: f.kind === 'toggle',
+      type: f.secret ? 'password' : 'text', font: f.mono ? "ui-monospace, 'SF Mono', Menlo, monospace" : 'inherit', size: f.mono ? '11px' : '13px' }));
+    const sections = [
+      { title: 'Server', fields: mk([T('Name', 'Shown in the server list'), T('Address', 'server.example.net or IP'), T('Port', cur0.k === 'wg' ? '51820' : cur0.k === 'ssh' ? '22' : '443')]) },
+      { title: 'Authentication', fields: mk(cur0.auth) }
+    ];
+    if (cur0.transport) sections.push({ title: 'Transport & Security', fields: mk([P('Transport', cur0.k === 'vless' ? 'TCP' : 'WebSocket'), P('Security', cur0.k === 'vless' ? 'Reality' : 'TLS'), T('Server name (SNI)', 'www.example.com'), P('Fingerprint', 'Chrome'), cur0.k === 'vless' ? T('Public key', 'Reality public key', { mono: true }) : T('Path', '/ws')]), note: 'Transport options: TCP, WebSocket, gRPC, HTTP/2, XHTTP, mKCP, HTTPUpgrade.' });
+    else if (cur0.tls) sections.push({ title: 'TLS', fields: mk([T('Server name (SNI)', 'Defaults to address'), T('ALPN', cur0.k === 'naive' ? 'h2' : 'h3'), T('Pinned certificate SHA-256', 'Optional', { mono: true })]), note: cur0.udp ? 'UDP protocol — use “Real test” to measure latency.' : '' });
+    else if (cur0.udp) sections.push({ title: 'Network', fields: mk([T('Allowed IPs', '0.0.0.0/0, ::/0', { mono: true }), T('Persistent keepalive', '25 s')]), note: 'UDP protocol — use “Real test” to measure latency.' });
+    sections.forEach((s) => { s.hasNote = !!s.note; });
+    const items = (eng) => defs.filter((d) => d.eng === eng).map((d) => {
+      const on = d.k === cur0.k;
+      return { ...d, on, bg: on ? '#0064D2' : 'transparent', fg: on ? '#FFFFFF' : '#1D1D1F', sub: on ? '#DCE9FA' : '#6E6E73', pick: () => this.setState({ p: d.k }) };
+    });
+    return {
+      cur, sections,
+      groups: [{ name: 'Xray core', items: items(X) }, { name: 'sing-box', items: items(SB) }]
+    };
+  }
+}
+</script>
+</body>
+</html>

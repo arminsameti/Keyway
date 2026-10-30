@@ -1,0 +1,155 @@
+package xray
+
+import (
+	"strings"
+
+	"xray-friendly/internal/models"
+	"xray-friendly/internal/profile"
+)
+
+var defaultDNS = []string{"1.1.1.1", "8.8.8.8", "localhost"}
+
+// BuildConfig renders the Xray configuration for the given server and settings.
+// The settings are validated first, so a config that cannot work is never written.
+func BuildConfig(p profile.Profile, s models.Settings) (*Config, error) {
+	if err := s.Validate(); err != nil {
+		return nil, err
+	}
+	proxy, err := FromProfile(p)
+	if err != nil {
+		return nil, err
+	}
+	proxy.Tag = "proxy"
+	proxy.Mux = nil
+	if s.Mux && proxy.MuxCapable() {
+		proxy.Mux = &Mux{Enabled: true, Concurrency: s.MuxConcurrency}
+	}
+
+	dns := s.DNS
+	if len(dns) == 0 {
+		dns = defaultDNS
+	}
+	return &Config{
+		Log:      LogConfig{LogLevel: s.LogLevel},
+		DNS:      &DNS{Servers: dns},
+		Inbounds: buildInbounds(s),
+		Outbounds: []Outbound{
+			proxy,
+			{Tag: "direct", Protocol: "freedom"},
+			{Tag: "block", Protocol: "blackhole"},
+		},
+		Routing: Routing{DomainStrategy: "IPIfNonMatch", Rules: buildRules(s)},
+	}, nil
+}
+
+func buildInbounds(s models.Settings) []Inbound {
+	var out []Inbound
+	for _, ib := range s.Inbounds {
+		if !ib.Enabled {
+			continue
+		}
+		in := Inbound{
+			Tag:      ib.Tag,
+			Protocol: ib.Protocol,
+			Listen:   s.EffectiveListen(ib),
+			Port:     ib.Port,
+			Sniffing: &Sniffing{Enabled: s.Sniffing, DestOverride: []string{"http", "tls", "quic"}},
+		}
+		var accounts []Account
+		if ib.Username != "" {
+			accounts = []Account{{User: ib.Username, Pass: ib.Password}}
+		}
+		switch ib.Protocol {
+		case "http":
+			in.Settings = &HTTPInbound{Accounts: accounts}
+		default:
+			auth := "noauth"
+			if accounts != nil {
+				auth = "password"
+			}
+			in.Settings = &SocksInbound{Auth: auth, Accounts: accounts, UDP: ib.UDP}
+		}
+		out = append(out, in)
+	}
+	return out
+}
+
+// SplitList splits a comma/newline separated list, dropping blanks.
+func SplitList(s string) []string {
+	var out []string
+	for _, p := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == '\n' || r == '\r' }) {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// buildRules honours DirectSites / ProxySites / BlockedSites / BlockAds in every
+// mode. Order matters: block, then explicit proxy, then direct.
+func buildRules(s models.Settings) []Rule {
+	var rules []Rule
+	add := func(tag string, domains, ips []string) {
+		if len(domains) > 0 || len(ips) > 0 {
+			rules = append(rules, Rule{Type: "field", Domain: domains, IP: ips, OutboundTag: tag})
+		}
+	}
+
+	blocked := SplitList(s.BlockedSites)
+	if s.BlockAds && len(blocked) == 0 {
+		blocked = []string{"geosite:category-ads-all"}
+	}
+	if s.BlockAds || s.RoutingMode == "custom" {
+		add("block", blocked, nil)
+	}
+
+	switch s.RoutingMode {
+	case "global":
+		// Everything through the proxy: only the block rule above applies.
+	case "custom":
+		add("proxy", SplitList(s.ProxySites), nil)
+		add("direct", SplitList(s.DirectSites), nil)
+	default: // bypass-private
+		add("direct", nil, []string{"geoip:private"})
+		direct := SplitList(s.DirectSites)
+		if len(direct) == 0 {
+			direct = []string{"geosite:private", "geosite:cn"}
+		}
+		add("direct", direct, nil)
+	}
+	if rules == nil {
+		rules = []Rule{}
+	}
+	return rules
+}
+
+// UsesGeoData reports whether the config needs geoip.dat / geosite.dat.
+func (c *Config) UsesGeoData() bool {
+	for _, r := range c.Routing.Rules {
+		for _, v := range append(append([]string{}, r.Domain...), r.IP...) {
+			if strings.HasPrefix(v, "geosite:") || strings.HasPrefix(v, "geoip:") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ProbeConfig is a minimal config exposing one SOCKS inbound on 127.0.0.1:port,
+// used to measure a node through a real Xray instance.
+func ProbeConfig(p profile.Profile, port int) (*Config, error) {
+	proxy, err := FromProfile(p)
+	if err != nil {
+		return nil, err
+	}
+	proxy.Tag = "proxy"
+	return &Config{
+		Log: LogConfig{LogLevel: "none"},
+		Inbounds: []Inbound{{
+			Tag: "probe", Protocol: "socks", Listen: "127.0.0.1", Port: port,
+			Settings: &SocksInbound{Auth: "noauth"},
+		}},
+		Outbounds: []Outbound{proxy},
+		Routing:   Routing{DomainStrategy: "AsIs", Rules: []Rule{}},
+	}, nil
+}
