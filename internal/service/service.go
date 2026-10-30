@@ -62,6 +62,9 @@ type Service struct {
 	dir        string
 	autoDL     bool
 
+	trafficMu sync.Mutex
+	traffic   *trafficMeter
+
 	curMu sync.Mutex
 	cur   runInfo // what the running engine was started with
 

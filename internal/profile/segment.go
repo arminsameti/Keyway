@@ -18,10 +18,20 @@ type Bridge struct {
 //   - Listen, when set, makes this a middle segment: instead of the user's
 //     inbounds and routing rules it exposes its exit on that bridge for the
 //     next segment.
+//   - Stats, when set on the segment that serves the user, makes the engine
+//     expose its traffic counters on a loopback port.
 type Segment struct {
 	Hops     []Profile
 	Upstream *Bridge
 	Listen   *Bridge
+	Stats    *StatsAPI
+}
+
+// StatsAPI is the loopback endpoint an engine reports its traffic on. Secret
+// protects it from other local programs where the engine supports one.
+type StatsAPI struct {
+	Port   int
+	Secret string
 }
 
 // Single is the one-hop segment of an ordinary server.

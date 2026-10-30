@@ -117,10 +117,11 @@ struct RoutingForm: View {
         VStack(alignment: .leading, spacing: 22) {
             CardSection(title: "Routing mode", caption: "Decides which traffic goes through the proxy.") {
                 CardRow(label: "Route traffic", first: true) {
-                    Picker("Route traffic", selection: settingBinding(model, \.routingMode)) {
+                    Picker("Route traffic", selection: routingModeBinding) {
                         Text("Bypass private & local sites").tag("bypass-private")
                         Text("Everything through the proxy").tag("global")
                         Text("Custom rules").tag("custom")
+                        Text("Rule sets (advanced)").tag("rules")
                     }
                     .labelsHidden().fixedSize()
                 }
@@ -131,6 +132,9 @@ struct RoutingForm: View {
                     Toggle("Sniffing", isOn: settingBinding(model, \.sniffing)).labelsHidden()
                 }
             }
+            if model.settings.routingMode == "rules" {
+                RuleSetEditor()
+            } else {
             CardSection(title: "Sites", footnote: "One entry per line or comma separated: geosite:cn, geoip:ir, domain:example.org, full:www.example.org, keyword:bank, or an IP range such as 10.0.0.0/8.") {
                 editor("Go direct", $direct, first: true)
                 if model.settings.routingMode == "custom" { editor("Always through the proxy", $proxy) }
@@ -146,9 +150,23 @@ struct RoutingForm: View {
                 }
                 .buttonStyle(.borderedProminent).disabled(!dirty)
             }
+            }
         }
         .frame(maxWidth: 680)
         .onAppear(perform: load)
+    }
+
+    /// Switching to rule sets creates a starter set when there is none, so the mode is never invalid.
+    private var routingModeBinding: Binding<String> {
+        Binding(get: { model.settings.routingMode }, set: { mode in
+            var s = model.settings
+            s.routingMode = mode
+            if mode == "rules", !s.ruleSets.contains(where: { $0.id == s.activeRuleSet }) {
+                if s.ruleSets.isEmpty { s.ruleSets = [RuleEditing.template()] }
+                s.activeRuleSet = s.ruleSets[0].id
+            }
+            model.save(s)
+        })
     }
 
     private var dirty: Bool {

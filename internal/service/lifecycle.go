@@ -72,6 +72,12 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 		return ConnectResult{}, err
 	}
 
+	stats, serr := newStatsAPI()
+	if serr != nil {
+		return ConnectResult{}, serr
+	}
+	segs[len(segs)-1].Stats = stats
+
 	// write and preflight every segment's config before touching what runs now
 	s.removeSegmentConfigs()
 	paths := make([]string, len(segs))
@@ -97,6 +103,7 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 		s.dropSysProxy()
 		return ConnectResult{}, err
 	}
+	s.startTraffic(trafficSourceFor(final, pl.finalInstall(), stats))
 	s.setCurrent(runInfo{NodeID: node.ID, Engine: final, Version: pl.finalInstall().Version, Label: engine.EngineNames(pl.steps)})
 
 	res := ConnectResult{Config: paths[len(paths)-1]}
@@ -155,6 +162,7 @@ func (s *Service) startAll(pl *connPlan, paths []string) error {
 
 // stopAll stops the process that serves the user first, then the earlier ones.
 func (s *Service) stopAll() error {
+	s.stopTraffic()
 	err := s.run.Stop()
 	s.extraMu.Lock()
 	ex := s.extra

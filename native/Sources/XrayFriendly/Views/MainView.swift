@@ -40,6 +40,7 @@ struct MainView: View {
         }
         .sheet(isPresented: $model.showImport) { ImportSheet(initialText: model.importPrefill) }
         .sheet(item: $model.qrNode) { QRSheet(node: $0) }
+        .sheet(item: $model.configPreview) { ConfigSheet(preview: $0) }
         .alert("Something went wrong", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -197,6 +198,7 @@ struct ConnectionCard: View {
                 }
             }
             Spacer(minLength: 8)
+            if connected, model.traffic.available { TrafficGauge(traffic: model.traffic) }
             Toggle("Auto-select fastest", isOn: Binding(get: { model.settings.autoPick }, set: { model.setAutoPick($0) }))
                 .toggleStyle(.checkbox)
                 .font(.system(size: 12))
@@ -225,6 +227,52 @@ struct ConnectionCard: View {
         }
         guard let node else { return "Add a server to get started." }
         return "Your traffic is going out directly. Connect to route it through \(node.displayName)."
+    }
+}
+
+/// Live speed, totals and a short history of the running connection.
+struct TrafficGauge: View {
+    let traffic: Traffic
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Sparkline(samples: traffic.history)
+                .frame(width: 64, height: 26)
+                .accessibilityHidden(true)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(verbatim: "↓ \(Format.rate(traffic.downBps))").foregroundStyle(Palette.greenText)
+                Text(verbatim: "↑ \(Format.rate(traffic.upBps))").foregroundStyle(Palette.secondary)
+            }
+            .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(verbatim: Format.bytes(traffic.downTotal))
+                Text(verbatim: Format.bytes(traffic.upTotal))
+            }
+            .font(.system(size: 11)).monospacedDigit().foregroundStyle(Palette.tertiary)
+        }
+        .help("Download and upload speed, and the totals since you connected")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Traffic")
+        .accessibilityValue("Download \(Format.rate(traffic.downBps)), upload \(Format.rate(traffic.upBps)). Total \(Format.bytes(traffic.downTotal)) down, \(Format.bytes(traffic.upTotal)) up")
+    }
+}
+
+/// Download speed over the last minute.
+struct Sparkline: View {
+    let samples: [TrafficSample]
+
+    var body: some View {
+        Canvas { ctx, size in
+            let vals = samples.map { Double($0.down) }
+            guard vals.count > 1, let top = vals.max(), top > 0 else { return }
+            var path = Path()
+            for (i, v) in vals.enumerated() {
+                let x = size.width * CGFloat(i) / CGFloat(max(1, 59))
+                let y = size.height - size.height * CGFloat(v / top)
+                i == 0 ? path.move(to: CGPoint(x: x, y: y)) : path.addLine(to: CGPoint(x: x, y: y))
+            }
+            ctx.stroke(path, with: .color(Palette.green), lineWidth: 1.5)
+        }
     }
 }
 
@@ -334,6 +382,7 @@ struct ServerTable: View {
                 Divider()
                 Button("Copy Link") { model.copyLink(n) }.disabled(!n.hasLink)
                 Button("Show QR") { model.qrNode = n }.disabled(!n.hasLink)
+                Button("View Config…") { model.showConfig(of: n) }
                 Button(n.isChain ? "Edit Chain…" : "Edit…") { openWindow(id: "server", value: EditorTarget.edit(id)) }
                 Divider()
                 Button("Delete", role: .destructive) { model.delete([id]) }
@@ -423,8 +472,11 @@ struct Inspector: View {
                             .disabled(!n.hasLink)
                     }
                     .controlSize(.regular)
-                    Button(n.isChain ? "Edit Chain…" : "Edit Server…") { openWindow(id: "server", value: EditorTarget.edit(n.id)) }
-                        .buttonStyle(.link).font(.system(size: 12))
+                    HStack(spacing: 14) {
+                        Button(n.isChain ? "Edit Chain…" : "Edit Server…") { openWindow(id: "server", value: EditorTarget.edit(n.id)) }
+                        Button("View Config…") { model.showConfig(of: n) }
+                    }
+                    .buttonStyle(.link).font(.system(size: 12))
                 }
             } else {
                 ContentUnavailableView("No server selected", systemImage: "globe")
@@ -460,6 +512,45 @@ struct Inspector: View {
             Spacer()
             Text(verbatim: "127.0.0.1:\(port)").font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
         }
+    }
+}
+
+/// The generated engine configuration of a server, read-only.
+struct ConfigSheet: View {
+    let preview: ConfigPreview
+    @Environment(\.dismiss) private var dismiss
+    @State private var index = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Config for \(preview.title)").font(.headline)
+            if preview.configs.count > 1 {
+                Picker("Process", selection: $index) {
+                    ForEach(preview.engines.indices, id: \.self) { Text("\($0 + 1). \(preview.engines[$0])").tag($0) }
+                }
+                .pickerStyle(.segmented).labelsHidden()
+            } else if let e = preview.engines.first {
+                Text("Runs on \(e)").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+            }
+            ScrollView {
+                Text(preview.configs.indices.contains(index) ? preview.configs[index] : "")
+                    .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+            }
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Palette.cardBorder))
+            Text("This is read-only and shows the server's credentials. Ports of the traffic counters change on every connection.")
+                .font(.system(size: 11)).foregroundStyle(Palette.secondary)
+            HStack {
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(preview.configs.indices.contains(index) ? preview.configs[index] : "", forType: .string)
+                }
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20).frame(width: 620, height: 520)
     }
 }
 

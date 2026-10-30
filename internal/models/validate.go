@@ -20,7 +20,7 @@ func invalid(format string, a ...any) error {
 var tagRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,32}$`)
 
 var (
-	routingModes = map[string]bool{"global": true, "bypass-private": true, "custom": true}
+	routingModes = map[string]bool{"global": true, "bypass-private": true, "custom": true, "rules": true}
 	enginePrefs  = map[string]bool{"xray": true, "sing-box": true}
 	updateChecks = map[string]bool{"never": true, "daily": true, "weekly": true}
 	latencyModes = map[string]bool{"tcp": true, "real": true}
@@ -103,6 +103,7 @@ func (s Settings) Validate() error {
 	if !routingModes[s.RoutingMode] {
 		add("unknown routing mode %q", s.RoutingMode)
 	}
+	s.validateRuleSets(add)
 	if !logLevels[s.LogLevel] {
 		add("unknown log level %q", s.LogLevel)
 	}

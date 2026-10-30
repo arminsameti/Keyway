@@ -51,6 +51,11 @@ func (s *SingBox) SupportsSegment(hops []profile.Profile, _ bool) error {
 }
 
 func (s *SingBox) Config(seg profile.Segment, st models.Settings) ([]byte, error) {
+	s.mu.RLock()
+	if seg.Stats != nil && s.tags != nil && !s.tags[singbox.TagClashAPI] {
+		seg.Stats = nil // this build has no stats endpoint; traffic is simply not shown
+	}
+	s.mu.RUnlock()
 	cfg, err := singbox.BuildConfig(seg, st, s.RuleSetPath)
 	if err != nil {
 		return nil, err

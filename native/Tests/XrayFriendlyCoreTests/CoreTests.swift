@@ -166,3 +166,87 @@ final class DecodeTests: XCTestCase {
         XCTAssertNil(n.source)
     }
 }
+
+final class TrafficFormatTests: XCTestCase {
+    func testBytesAndRate() {
+        XCTAssertEqual(Format.bytes(0), "0 B")
+        XCTAssertEqual(Format.bytes(999), "999 B")
+        XCTAssertEqual(Format.bytes(1_500), "1.5 KB")
+        XCTAssertEqual(Format.bytes(34_000_000), "34 MB")
+        XCTAssertEqual(Format.rate(2_500_000), "2.5 MB/s")
+        XCTAssertEqual(Format.bytes(-5), "0 B")
+    }
+}
+
+final class RuleEditingTests: XCTestCase {
+    func testEntriesSplitOnLinesAndCommas() {
+        XCTAssertEqual(RuleEditing.entries(from: " geosite:cn, domain:a.com\n\n10.0.0.0/8 \r\n"), ["geosite:cn", "domain:a.com", "10.0.0.0/8"])
+        XCTAssertEqual(RuleEditing.text(from: ["a", "b"]), "a\nb")
+    }
+
+    func testMoveStaysInBounds() {
+        var rules = [RouteRule(id: "a"), RouteRule(id: "b"), RouteRule(id: "c")]
+        RuleEditing.move(&rules, id: "c", by: -1)
+        XCTAssertEqual(rules.map(\.id), ["a", "c", "b"])
+        RuleEditing.move(&rules, id: "a", by: -1)
+        XCTAssertEqual(rules.map(\.id), ["a", "c", "b"])
+        RuleEditing.move(&rules, id: "nope", by: 1)
+        XCTAssertEqual(rules.count, 3)
+    }
+
+    func testDuplicateGetsNewIDsAndTemplateIsValid() {
+        let t = RuleEditing.template()
+        let d = RuleEditing.duplicate(t)
+        XCTAssertNotEqual(d.id, t.id)
+        XCTAssertEqual(Set(d.rules.map(\.id)).intersection(t.rules.map(\.id)).count, 0)
+        XCTAssertEqual(d.rules.map(\.entries), t.rules.map(\.entries))
+        XCTAssertTrue(RuleEditing.problems(t).isEmpty)
+        var bad = t
+        bad.rules[0].entries = []
+        XCTAssertEqual(RuleEditing.problems(bad).count, 1)
+    }
+
+    func testDestinationParsing() {
+        XCTAssertEqual(RuleEditing.destination("https://example.com/path").host, "example.com")
+        XCTAssertEqual(RuleEditing.destination("example.com:8443").port, 8443)
+        XCTAssertEqual(RuleEditing.destination("1.2.3.4").port, 0)
+        XCTAssertEqual(RuleEditing.destination("::1").host, "::1")
+    }
+}
+
+final class ServerOverridesTests: XCTestCase {
+    func testNothingSetCleansToNil() {
+        var o = ServerOverrides()
+        o.sni = "  "
+        o.muxConcurrency = 4 // meaningless while multiplexing follows the global setting
+        o.fragment = ServerOverrides.Fragment(packets: "", length: " ", interval: nil)
+        var expected = ServerOverrides()
+        expected.fragment = ServerOverrides.Fragment()
+        XCTAssertEqual(o.cleaned, expected, "an enabled fragment with blank fields keeps the toggle, drops the blanks")
+        XCTAssertNil(ServerOverrides().cleaned)
+    }
+
+    func testEncodesOnlyWhatIsSet() throws {
+        var o = ServerOverrides()
+        o.mux = false
+        o.sni = "front.example.net"
+        let json = String(decoding: try JSONEncoder().encode(o), as: UTF8.self)
+        XCTAssertTrue(json.contains("\"mux\":false") && json.contains("front.example.net"))
+        XCTAssertFalse(json.contains("fragment"))
+    }
+}
+
+final class CustomFormTests: XCTestCase {
+    func testProfileCarriesEngineAndTrimmedJSON() throws {
+        var f = CustomForm()
+        f.name = " Mine "
+        f.engine = "sing-box"
+        f.config = "\n {\"type\":\"direct\"} \n"
+        let (name, p) = try f.profile()
+        XCTAssertEqual(name, "Mine")
+        XCTAssertEqual(p.protocol, "custom")
+        XCTAssertEqual(p.custom, CustomConfig(engine: "sing-box", config: "{\"type\":\"direct\"}"))
+        XCTAssertThrowsError(try CustomForm().profile())
+        XCTAssertEqual(CustomForm(profile: p, name: "Mine").engine, "sing-box")
+    }
+}

@@ -95,8 +95,8 @@ func (s *Service) Measure(ctx context.Context, nodes []models.Node, mode string)
 }
 
 func tcpProbe(ctx context.Context, n models.Node) int64 {
-	if n.Protocol == profile.Chain {
-		return models.LatencyNA // only the real test measures a whole chain
+	if n.Protocol == profile.Chain || n.Protocol == profile.Custom {
+		return models.LatencyNA // only the real test measures a whole chain or a hand-written config
 	}
 	udp := (profile.Profile{Protocol: n.Protocol}).UDPBased()
 	if p, err := link.NodeProfile(n.RawLink, n.Profile); err == nil {

@@ -172,6 +172,38 @@ func TestRealEngineSingBoxAcceptsEveryConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	singBoxCheck(t, bin, mid, "middle segment")
+	withStats, err := BuildConfig(profile.Segment{Hops: []profile.Profile{hops["wireguard"]}, Stats: &profile.StatsAPI{Port: 31003, Secret: "s"}}, s, rsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	singBoxCheck(t, bin, withStats, "stats API")
+	rs := s
+	rs.RoutingMode = "rules"
+	rs.RuleSets = []models.RuleSet{{ID: "r", Name: "r", Rules: []models.RouteRule{
+		{ID: "1", Enabled: true, Outbound: "direct", Entries: []string{"domain:a.example", "full:b.example", "keyword:ads", "regexp:^x[0-9]+$", "10.0.0.0/8", "1.2.3.4", "geoip:private", "port:80,443,8000-9000", "process:Slack", "process-path:/Applications/Slack.app/Contents/MacOS/Slack"}},
+		{ID: "2", Enabled: true, Outbound: "block", Entries: []string{"domain:bad.example"}}}}}
+	rs.ActiveRuleSet = "r"
+	custom, err := BuildConfig(profile.Single(hops["wireguard"]), rs, rsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	singBoxCheck(t, bin, custom, "rules mode")
+	yes := true
+	ov := hops["trojan-grpc"]
+	ov.Transport = profile.Transport{Type: "tcp"}
+	ov.Overrides = &profile.Overrides{Mux: &yes, MuxConcurrency: 4, Fragment: &profile.Fragment{}}
+	withOv, err := BuildConfig(profile.Single(ov), s, rsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	singBoxCheck(t, bin, withOv, "fragment and mux overrides")
+	custom1 := profile.Profile{Protocol: profile.Custom, Custom: &profile.CustomOpts{Engine: "sing-box", Config: `{"outbounds":[
+		{"type":"trojan","tag":"t","server":"a.example.com","server_port":443,"password":"pw","tls":{"enabled":true,"server_name":"a.example.com"}}]}`}}
+	cc, err := BuildConfig(profile.Segment{Hops: []profile.Profile{custom1}, Stats: &profile.StatsAPI{Port: 31004}}, s, rsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	singBoxCheck(t, bin, cc, "custom config")
 	last, err := BuildConfig(profile.Segment{Hops: []profile.Profile{hops["wireguard"]}, Upstream: up}, s, rsPath)
 	if err != nil {
 		t.Fatal(err)

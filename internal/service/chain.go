@@ -37,6 +37,9 @@ func (pl *connPlan) finalInstall() engine.Install {
 func (s *Service) resolveHops(d models.AppData, n models.Node) ([]profile.Profile, []string, error) {
 	if n.Protocol != profile.Chain {
 		p, err := link.NodeProfile(n.RawLink, n.Profile)
+		if err == nil {
+			p, err = n.Overrides.Apply(p)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
@@ -57,6 +60,9 @@ func (s *Service) hopsOf(d models.AppData, ids []string) ([]profile.Profile, []s
 			return nil, nil, &models.ValidationError{Msg: fmt.Sprintf("hop %d “%s” is itself a chain; a chain can only contain single servers", i+1, h.Name)}
 		}
 		p, err := link.NodeProfile(h.RawLink, h.Profile)
+		if err == nil {
+			p, err = h.Overrides.Apply(p)
+		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("hop %d “%s”: %w", i+1, h.Name, err)
 		}
@@ -283,6 +289,8 @@ type EditView struct {
 	Name    string           `json:"name"`
 	Profile *profile.Profile `json:"profile,omitempty"`
 	Chain   []string         `json:"chain,omitempty"`
+
+	Overrides *profile.Overrides `json:"overrides,omitempty"`
 }
 
 // NodeForEdit returns a node in editable form.
@@ -298,7 +306,7 @@ func (s *Service) NodeForEdit(id string) (EditView, error) {
 	if err != nil {
 		return EditView{}, err
 	}
-	return EditView{Name: n.Name, Profile: &p}, nil
+	return EditView{Name: n.Name, Profile: &p, Overrides: n.Overrides}, nil
 }
 
 // hopsFromInput resolves a not-yet-saved server or chain ("Test Connection").
@@ -310,7 +318,11 @@ func (s *Service) hopsFromInput(d models.AppData, in NodeInput) ([]profile.Profi
 	if err != nil {
 		return nil, nil, err
 	}
-	return []profile.Profile{res.Profile}, []string{res.Node.Name}, nil
+	p, err := in.Overrides.Apply(res.Profile)
+	if err != nil {
+		return nil, nil, &models.ValidationError{Msg: err.Error()}
+	}
+	return []profile.Profile{p}, []string{res.Node.Name}, nil
 }
 
 // ChainPlan is what saving or connecting a chain would do, for the editor.
@@ -339,4 +351,49 @@ func (s *Service) PlanChain(ids []string) (ChainPlan, error) {
 		}
 	}
 	return pl, nil
+}
+
+// ConfigPreview is the configuration this app would run for a node, one entry
+// per engine process (entry first), for inspection. It is built exactly like a
+// real connection's, so what you read is what runs.
+type ConfigPreview struct {
+	Engines []string `json:"engines"` // display name per process
+	Configs []string `json:"configs"` // JSON text per process
+}
+
+// PreviewConfig renders a node's configuration without starting anything.
+func (s *Service) PreviewConfig(id string) (ConfigPreview, error) {
+	d := s.store.Get()
+	node, ok := d.FindNode(id)
+	if !ok {
+		return ConfigPreview{}, ErrNodeNotFound
+	}
+	hops, names, err := s.resolveHops(d, node)
+	if err != nil {
+		return ConfigPreview{}, err
+	}
+	if len(hops) > 1 {
+		if err := profile.CheckChain(hops, names); err != nil {
+			return ConfigPreview{}, &models.ValidationError{Msg: err.Error()}
+		}
+	}
+	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true })
+	if err != nil {
+		return ConfigPreview{}, &models.ValidationError{Msg: err.Error()}
+	}
+	pl := &connPlan{hops: hops, names: names, steps: steps}
+	segs, err := pl.segments()
+	if err != nil {
+		return ConfigPreview{}, err
+	}
+	var out ConfigPreview
+	for k, seg := range segs {
+		cfg, err := pl.steps[k].Engine.Config(seg, d.Settings)
+		if err != nil {
+			return ConfigPreview{}, err
+		}
+		out.Engines = append(out.Engines, pl.steps[k].Engine.DisplayName())
+		out.Configs = append(out.Configs, string(cfg))
+	}
+	return out, nil
 }

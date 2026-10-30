@@ -43,6 +43,9 @@ func CheckChain(hops []Profile, names []string) error {
 		if err := h.Validate(); err != nil {
 			return fmt.Errorf("hop %s: %w", label(i), err)
 		}
+		if h.Protocol == Custom {
+			return fmt.Errorf("hop %s is a custom config, which cannot be part of a chain", label(i))
+		}
 		if i > 0 && h.UDPBased() && !RelaysUDP(hops[i-1]) {
 			return fmt.Errorf("hop %s is UDP-based, but the hop before it, %s, cannot carry UDP", label(i), label(i-1))
 		}

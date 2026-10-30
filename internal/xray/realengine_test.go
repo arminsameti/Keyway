@@ -98,6 +98,38 @@ func TestRealEngineXrayAcceptsEveryConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	xrayTest(t, bin, last, "last segment behind a bridge")
+	withStats, err := BuildConfig(profile.Segment{Hops: []profile.Profile{hops["vless-xhttp"]}, Stats: &profile.StatsAPI{Port: 31003, Secret: "s"}}, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xrayTest(t, bin, withStats, "stats API")
+	rs := s
+	rs.RoutingMode = "rules"
+	rs.RuleSets = []models.RuleSet{{ID: "r", Name: "r", Rules: []models.RouteRule{
+		{ID: "1", Enabled: true, Outbound: "direct", Entries: []string{"domain:a.example", "full:b.example", "keyword:ads", "regexp:^x[0-9]+$", "10.0.0.0/8", "1.2.3.4", "port:80,443,8000-9000"}},
+		{ID: "2", Enabled: true, Outbound: "block", Entries: []string{"domain:bad.example"}}}}}
+	rs.ActiveRuleSet = "r"
+	custom, err := BuildConfig(profile.Single(hops["vless-xhttp"]), rs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xrayTest(t, bin, custom, "rules mode")
+	yes := true
+	ov := hops["trojan-grpc"]
+	ov.Transport = profile.Transport{Type: "tcp"}
+	ov.Overrides = &profile.Overrides{Mux: &yes, MuxConcurrency: 4, Fragment: &profile.Fragment{Length: "50-100"}}
+	withOv, err := BuildConfig(profile.Single(ov), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xrayTest(t, bin, withOv, "fragment and mux overrides")
+	custom1 := profile.Profile{Protocol: profile.Custom, Custom: &profile.CustomOpts{Engine: "xray", Config: `{"outbounds":[
+		{"tag":"front","protocol":"trojan","settings":{"servers":[{"address":"a.example.com","port":443,"password":"pw"}]},"streamSettings":{"network":"tcp","security":"tls","tlsSettings":{"serverName":"a.example.com"}}}]}`}}
+	cc, err := BuildConfig(profile.Segment{Hops: []profile.Profile{custom1}, Stats: &profile.StatsAPI{Port: 31004}}, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xrayTest(t, bin, cc, "custom config")
 	mid, err := BuildConfig(profile.Segment{Hops: []profile.Profile{hops["vless-reality"]}, Listen: listen}, s)
 	if err != nil {
 		t.Fatal(err)

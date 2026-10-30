@@ -12,6 +12,11 @@ import (
 // Supports reports whether Xray can run the profile, with the reason if not.
 func Supports(p profile.Profile) error {
 	switch p.Protocol {
+	case profile.Custom:
+		if p.Custom == nil || p.Custom.Engine != "xray" {
+			return fmt.Errorf("this custom config is written for sing-box")
+		}
+		return nil
 	case profile.VLESS, profile.VMess, profile.Trojan, profile.Shadowsocks, profile.SOCKS, profile.HTTP, profile.WireGuard:
 	case profile.Hysteria2:
 		if h := p.Hysteria; h != nil && h.Obfs != "" {
@@ -69,6 +74,18 @@ func hopTag(i, n int) string {
 	return fmt.Sprintf("hop-%d", i)
 }
 
+// fragmentTag is the freedom outbound that splits the TLS handshake of the
+// first hop.
+const fragmentTag = "fragment"
+
+func fragmentOf(p profile.Profile) *profile.Fragment {
+	if p.Overrides == nil || p.Overrides.Fragment == nil {
+		return nil
+	}
+	f := p.Overrides.Fragment.Defaults()
+	return &f
+}
+
 // chainOutbound renders one hop; dialer is the tag of the outbound it dials
 // through ("" = directly).
 func chainOutbound(p profile.Profile, tag, dialer string) (Outbound, error) {
@@ -103,9 +120,25 @@ func segmentOutbounds(seg profile.Segment) ([]Outbound, error) {
 			Address: "127.0.0.1", Port: u.Port, Users: []Account{{User: u.User, Pass: u.Pass}}}}}}}
 		dialer = bridgeTag
 	}
+	if n == 1 && seg.Hops[0].Protocol == profile.Custom {
+		if seg.Upstream != nil {
+			return nil, fmt.Errorf("a custom config cannot be dialed through another server")
+		}
+		return customOutbounds(seg.Hops[0])
+	}
 	hops := make([]Outbound, n)
+	var fragment []Outbound
 	for i, h := range seg.Hops {
-		ob, err := chainOutbound(h, hopTag(i, n), dialer)
+		d := dialer
+		if f := fragmentOf(h); f != nil {
+			if dialer != "" {
+				return nil, fmt.Errorf("hop %d: fragmentation only works on a server that is dialed directly, not through another server", i+1)
+			}
+			fragment = []Outbound{{Tag: fragmentTag, Protocol: "freedom", Settings: map[string]any{
+				"fragment": map[string]string{"packets": f.Packets, "length": f.Length, "interval": f.Interval}}}}
+			d = fragmentTag
+		}
+		ob, err := chainOutbound(h, hopTag(i, n), d)
 		if err != nil {
 			return nil, err
 		}
@@ -113,6 +146,7 @@ func segmentOutbounds(seg profile.Segment) ([]Outbound, error) {
 	}
 	out := []Outbound{hops[n-1]}
 	out = append(out, hops[:n-1]...)
+	out = append(out, fragment...)
 	return append(out, bridge...), nil
 }
 

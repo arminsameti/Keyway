@@ -159,6 +159,16 @@ func ProfileNode(p profile.Profile, name string) (Result, error) {
 	if err := p.Validate(); err != nil {
 		return Result{}, err
 	}
+	if p.Protocol == profile.Custom {
+		// show the exit server's address where there is one
+		p.Server, p.Port = profile.CustomEndpoint(p.Custom)
+		if p.Server == "" {
+			p.Server = "custom"
+		}
+		if strings.TrimSpace(name) == "" {
+			name = "Custom " + map[string]string{"xray": "Xray", "sing-box": "sing-box"}[p.Custom.Engine]
+		}
+	}
 	if strings.TrimSpace(name) == "" {
 		name = fmt.Sprintf("%s-%s:%d", p.Protocol, p.Server, p.Port)
 	}

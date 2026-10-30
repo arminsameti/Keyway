@@ -4,6 +4,8 @@ package models
 import (
 	"encoding/json"
 	"time"
+
+	"xray-friendly/internal/profile"
 )
 
 // Latency sentinel values stored in Node.LatencyMs.
@@ -21,17 +23,18 @@ const SchemaVersion = 3
 // to already-imported nodes. Nodes without a share link (manual SSH, Clash or
 // sing-box imports) carry their engine-neutral Profile instead.
 type Node struct {
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Protocol  string          `json:"protocol"` // see profile.VLESS and friends
-	Server    string          `json:"server"`
-	Port      int             `json:"port"`
-	RawLink   string          `json:"rawLink,omitempty"`
-	Profile   json.RawMessage `json:"profile,omitempty"` // profile.Profile when RawLink is empty
-	Chain     []string        `json:"chain,omitempty"`   // protocol "chain": IDs of the hop nodes, entry first
-	Source    string          `json:"source,omitempty"`  // subscription ID; empty for manually added nodes
-	CreatedAt time.Time       `json:"createdAt"`
-	LatencyMs int64           `json:"latencyMs"`
+	ID        string             `json:"id"`
+	Name      string             `json:"name"`
+	Protocol  string             `json:"protocol"` // see profile.VLESS and friends
+	Server    string             `json:"server"`
+	Port      int                `json:"port"`
+	RawLink   string             `json:"rawLink,omitempty"`
+	Profile   json.RawMessage    `json:"profile,omitempty"`   // profile.Profile when RawLink is empty
+	Chain     []string           `json:"chain,omitempty"`     // protocol "chain": IDs of the hop nodes, entry first
+	Overrides *profile.Overrides `json:"overrides,omitempty"` // per-server tweaks over the global settings
+	Source    string             `json:"source,omitempty"`    // subscription ID; empty for manually added nodes
+	CreatedAt time.Time          `json:"createdAt"`
+	LatencyMs int64              `json:"latencyMs"`
 }
 
 // Subscription is a persisted subscription URL whose nodes can be refreshed.
@@ -82,6 +85,9 @@ type Settings struct {
 	AutoDownloadEngines bool   `json:"autoDownloadEngines"` // fetch an engine when a new server needs it
 	EngineUpdateCheck   string `json:"engineUpdateCheck"`   // never | daily | weekly
 	LatencyMethod       string `json:"latencyMethod"`       // tcp | real
+
+	RuleSets      []RuleSet `json:"ruleSets"`      // used by routing mode "rules"
+	ActiveRuleSet string    `json:"activeRuleSet"` // ID of the rule set in use
 }
 
 // EngineCheck records the last update check for one engine.
@@ -150,6 +156,18 @@ func (d AppData) Clone() AppData {
 	for i, n := range d.Nodes {
 		n.Profile = append(json.RawMessage(nil), n.Profile...)
 		n.Chain = append([]string(nil), n.Chain...)
+		if n.Overrides != nil {
+			o := *n.Overrides
+			if o.Mux != nil {
+				m := *o.Mux
+				o.Mux = &m
+			}
+			if o.Fragment != nil {
+				f := *o.Fragment
+				o.Fragment = &f
+			}
+			n.Overrides = &o
+		}
 		c.Nodes[i] = n
 	}
 	c.Engines = make(map[string]string, len(d.Engines))
@@ -170,6 +188,14 @@ func (s Settings) Clone() Settings {
 	c := s
 	c.Inbounds = append([]Inbound{}, s.Inbounds...)
 	c.DNS = append([]string{}, s.DNS...)
+	c.RuleSets = make([]RuleSet, len(s.RuleSets))
+	for i, set := range s.RuleSets {
+		c.RuleSets[i] = RuleSet{ID: set.ID, Name: set.Name, Rules: make([]RouteRule, len(set.Rules))}
+		for j, r := range set.Rules {
+			r.Entries = append([]string{}, r.Entries...)
+			c.RuleSets[i].Rules[j] = r
+		}
+	}
 	return c
 }
 

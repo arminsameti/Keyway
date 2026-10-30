@@ -102,7 +102,8 @@ struct MenuBarView: View {
         guard model.connected else { return "Traffic is going out directly" }
         var up = model.status.uptimeSec
         if let s = model.status.startedAt, s > .distantPast { up = Int(now.timeIntervalSince(s)) }
-        return "\(model.status.activeNode) · \(Format.latency(model.status.activeLatencyMs)) · \(Format.uptime(up))"
+        let speed = model.traffic.available ? " · ↓ \(Format.rate(model.traffic.downBps))" : ""
+        return "\(model.status.activeNode) · \(Format.latency(model.status.activeLatencyMs)) · \(Format.uptime(up))\(speed)"
     }
 
     private var ports: String {

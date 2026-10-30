@@ -1,6 +1,7 @@
 package xray
 
 import (
+	"fmt"
 	"strings"
 
 	"xray-friendly/internal/models"
@@ -37,12 +38,47 @@ func BuildConfig(seg profile.Segment, s models.Settings) (*Config, error) {
 		cfg.Routing = Routing{DomainStrategy: "AsIs", Rules: []Rule{}}
 		return cfg, nil
 	}
-	if s.Mux && cfg.Outbounds[0].MuxCapable() {
-		cfg.Outbounds[0].Mux = &Mux{Enabled: true, Concurrency: s.MuxConcurrency}
+	if on, conc := muxFor(s, seg.Hops[len(seg.Hops)-1]); on && cfg.Outbounds[0].MuxCapable() {
+		cfg.Outbounds[0].Mux = &Mux{Enabled: true, Concurrency: conc}
 	}
 	cfg.Inbounds = buildInbounds(s)
-	cfg.Routing = Routing{DomainStrategy: "IPIfNonMatch", Rules: buildRules(s)}
+	rules, err := buildRules(s)
+	if err != nil {
+		return nil, err
+	}
+	cfg.Routing = Routing{DomainStrategy: "IPIfNonMatch", Rules: rules}
+	if seg.Stats != nil {
+		addStats(cfg, seg.Stats.Port)
+	}
 	return cfg, nil
+}
+
+// muxFor resolves multiplexing for the exit server: its own override, else the global setting.
+func muxFor(s models.Settings, exit profile.Profile) (bool, int) {
+	on, conc := s.Mux, s.MuxConcurrency
+	if o := exit.Overrides; o != nil {
+		if o.Mux != nil {
+			on = *o.Mux
+		}
+		if o.MuxConcurrency > 0 {
+			conc = o.MuxConcurrency
+		}
+	}
+	return on, conc
+}
+
+// StatsTag is the inbound that carries the stats gRPC API.
+const StatsTag = "stats-api"
+
+// addStats turns on Xray's per-outbound counters and exposes them on a
+// loopback-only dokodemo inbound that is routed to the API handler.
+func addStats(cfg *Config, port int) {
+	cfg.Stats = &struct{}{}
+	cfg.API = &API{Tag: "api", Services: []string{"StatsService"}}
+	cfg.Policy = &Policy{System: PolicySystem{OutboundUplink: true, OutboundDownlink: true}}
+	cfg.Inbounds = append(cfg.Inbounds, Inbound{Tag: StatsTag, Protocol: "dokodemo-door", Listen: "127.0.0.1", Port: port,
+		Settings: map[string]any{"address": "127.0.0.1"}})
+	cfg.Routing.Rules = append([]Rule{{Type: "field", InboundTag: []string{StatsTag}, OutboundTag: "api"}}, cfg.Routing.Rules...)
 }
 
 func bridgeInbound(b profile.Bridge) Inbound {
@@ -95,7 +131,7 @@ func SplitList(s string) []string {
 
 // buildRules honours DirectSites / ProxySites / BlockedSites / BlockAds in every
 // mode. Order matters: block, then explicit proxy, then direct.
-func buildRules(s models.Settings) []Rule {
+func buildRules(s models.Settings) ([]Rule, error) {
 	var rules []Rule
 	add := func(tag string, domains, ips []string) {
 		if len(domains) > 0 || len(ips) > 0 {
@@ -112,6 +148,12 @@ func buildRules(s models.Settings) []Rule {
 	}
 
 	switch s.RoutingMode {
+	case "rules":
+		custom, err := customRules(s)
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, custom...)
 	case "global":
 		// Everything through the proxy: only the block rule above applies.
 	case "custom":
@@ -128,7 +170,43 @@ func buildRules(s models.Settings) []Rule {
 	if rules == nil {
 		rules = []Rule{}
 	}
-	return rules
+	return rules, nil
+}
+
+// customRules turns the active rule set into Xray rules. Xray ANDs the fields
+// of one rule, so each kind of entry becomes a rule of its own; they share an
+// outbound and keep the user's order.
+func customRules(s models.Settings) ([]Rule, error) {
+	var out []Rule
+	for _, r := range s.ActiveRules() {
+		var domains, ips, ports []string
+		for _, e := range r.Entries {
+			kind, err := models.EntryKind(e)
+			if err != nil {
+				return nil, err
+			}
+			switch kind {
+			case models.KindDomain:
+				domains = append(domains, strings.TrimSpace(e))
+			case models.KindIP:
+				ips = append(ips, strings.TrimSpace(e))
+			case models.KindPort:
+				ports = append(ports, strings.TrimPrefix(strings.TrimSpace(e), "port:"))
+			default:
+				return nil, fmt.Errorf("routing entry %q matches by app, which only sing-box can do; choose sing-box as the engine", e)
+			}
+		}
+		if len(domains) > 0 {
+			out = append(out, Rule{Type: "field", Domain: domains, OutboundTag: r.Outbound})
+		}
+		if len(ips) > 0 {
+			out = append(out, Rule{Type: "field", IP: ips, OutboundTag: r.Outbound})
+		}
+		if len(ports) > 0 {
+			out = append(out, Rule{Type: "field", Port: strings.Join(ports, ","), OutboundTag: r.Outbound})
+		}
+	}
+	return out, nil
 }
 
 // UsesGeoData reports whether the config needs geoip.dat / geosite.dat.

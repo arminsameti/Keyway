@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	qrcode "github.com/skip2/go-qrcode"
 
@@ -336,4 +337,57 @@ func (s *Server) setSysProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ok(w, map[string]any{"supported": v.Supported, "enabled": v.Enabled, "states": v.States})
+}
+
+func (s *Server) traffic(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, s.svc.Traffic())
+}
+
+// routingImport parses pasted routing rules without saving anything.
+func (s *Server) routingImport(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Text string `json:"text"`
+	}
+	if err := decode(r, &b, false); err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	rules, skipped, err := models.ParseRules(b.Text)
+	if err != nil {
+		failErr(w, &models.ValidationError{Msg: err.Error()}, http.StatusBadRequest)
+		return
+	}
+	ok(w, map[string]any{"rules": rules, "skipped": skipped})
+}
+
+// routingTest reports which rule of the given (or the active) set a destination hits.
+func (s *Server) routingTest(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Host  string             `json:"host"`
+		Port  int                `json:"port"`
+		Rules []models.RouteRule `json:"rules"`
+	}
+	if err := decode(r, &b, false); err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(b.Host) == "" {
+		failErr(w, &models.ValidationError{Msg: "enter a domain or an IP address"}, http.StatusBadRequest)
+		return
+	}
+	rules := b.Rules
+	if rules == nil {
+		rules = s.svc.State().Settings.ActiveRules()
+	}
+	ok(w, map[string]any{"match": models.MatchRoute(rules, b.Host, b.Port)})
+}
+
+// nodeConfig shows the configuration that would run for a node.
+func (s *Server) nodeConfig(w http.ResponseWriter, r *http.Request) {
+	p, err := s.svc.PreviewConfig(r.PathValue("id"))
+	if err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	ok(w, map[string]any{"engines": p.Engines, "configs": p.Configs})
 }

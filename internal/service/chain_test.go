@@ -330,3 +330,60 @@ func TestChainProbeTimeoutGrowsWithHops(t *testing.T) {
 		t.Fatalf("capped: %v", chainProbeTimeout(profile.MaxChainHops))
 	}
 }
+
+func TestOverridesAreSavedValidatedAndReachTheConfig(t *testing.T) {
+	e := newTwoEngines(t, true)
+	yes := true
+	p := profile.Profile{Protocol: profile.Trojan, Server: "b.example.net", Port: 443, Password: "p", Transport: profile.Transport{Type: "tcp"},
+		Security: profile.Security{Kind: "tls", SNI: "b.example.net"}}
+	v, err := e.svc.CreateNode(NodeInput{Name: "T", Profile: &p, Overrides: &profile.Overrides{Mux: &yes, SNI: "front.example.net"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Overrides == nil || v.Overrides.SNI != "front.example.net" {
+		t.Fatalf("overrides not stored: %+v", v.Overrides)
+	}
+	ev, err := e.svc.NodeForEdit(v.ID)
+	if err != nil || ev.Overrides == nil || ev.Overrides.Mux == nil || !*ev.Overrides.Mux {
+		t.Fatalf("edit view lost the overrides: %+v %v", ev, err)
+	}
+	d := e.svc.store.Get()
+	hops, _, err := e.svc.resolveHops(d, d.Nodes[0])
+	if err != nil || hops[0].Security.SNI != "front.example.net" || hops[0].Overrides == nil {
+		t.Fatalf("connect must see the overridden server name: %+v %v", hops, err)
+	}
+
+	// refused: fragmentation on a plain server
+	plain := profile.Profile{Protocol: profile.Shadowsocks, Server: "s.example.net", Port: 8388, Cipher: "aes-128-gcm", Password: "pw"}
+	if _, err := e.svc.CreateNode(NodeInput{Name: "S", Profile: &plain, Overrides: &profile.Overrides{Fragment: &profile.Fragment{}}}); err == nil {
+		t.Error("fragmentation needs TLS")
+	}
+	// clearing: an update with no overrides removes them
+	up, err := e.svc.UpdateNode(v.ID, NodeInput{Name: "T", Profile: &p})
+	if err != nil || up.Overrides != nil {
+		t.Errorf("update without overrides must clear them: %+v %v", up.Overrides, err)
+	}
+}
+
+func TestCustomServerIsSavedPlannedAndNeverChained(t *testing.T) {
+	e := newTwoEngines(t, true)
+	cfg := `{"tag":"x","protocol":"trojan","settings":{"servers":[{"address":"c.example.net","port":8443,"password":"pw"}]}}`
+	v, err := e.svc.CreateNode(NodeInput{Name: "Mine", Profile: &profile.Profile{Protocol: profile.Custom, Custom: &profile.CustomOpts{Engine: "xray", Config: cfg}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Protocol != profile.Custom || v.ProtocolName != "Custom" || v.Server != "c.example.net" || v.Port != 8443 || v.Engine != "xray" {
+		t.Fatalf("view = %+v", v)
+	}
+	ev, err := e.svc.NodeForEdit(v.ID)
+	if err != nil || ev.Profile == nil || ev.Profile.Custom == nil || ev.Profile.Custom.Config != cfg {
+		t.Fatalf("edit view: %+v %v", ev, err)
+	}
+	other := e.link(t, "vless://u@a.example.net:443?security=tls#A")
+	if _, err := e.svc.CreateNode(NodeInput{Chain: []string{other, v.ID}}); err == nil || !strings.Contains(err.Error(), "cannot be part of a chain") {
+		t.Errorf("custom in a chain: %v", err)
+	}
+	if _, err := e.svc.CreateNode(NodeInput{Name: "Bad", Profile: &profile.Profile{Protocol: profile.Custom, Custom: &profile.CustomOpts{Engine: "xray", Config: "nope"}}}); err == nil {
+		t.Error("invalid JSON must be refused")
+	}
+}
