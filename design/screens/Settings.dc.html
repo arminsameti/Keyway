@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings — Engines</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#0064D2}a:hover{color:#004FA6}
+button,select,input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 760px; height: 720px; box-sizing: border-box; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden; border: 1px solid #C9C9CE; background: #F4F4F6; font-family: -apple-system, 'SF Pro Text', system-ui, 'Helvetica Neue', sans-serif; font-size: 13px; color: #1D1D1F; -webkit-font-smoothing: antialiased">
+  <!-- Toolbar with tabs -->
+  <div style="flex-shrink: 0; background: #ECECEF; border-bottom: 1px solid #D8D8DC; padding: 10px 14px 6px; position: relative">
+    <div style="display: flex; gap: 8px; position: absolute; top: 12px; left: 14px" aria-hidden="true">
+      <span style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57"></span>
+      <span style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E"></span>
+      <span style="width: 12px; height: 12px; border-radius: 50%; background: #28C840"></span>
+    </div>
+    <h1 style="margin: 0 0 8px; text-align: center; font-size: 13px; font-weight: 700">Engines</h1>
+    <div role="tablist" aria-label="Settings" style="display: flex; justify-content: center; gap: 4px">
+      <button role="tab" aria-selected="false" style="width: 72px; height: 50px; border: 0; border-radius: 7px; background: transparent; color: #48484D; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="2.6"></circle><path d="M10 2v2.2M10 15.8V18M2 10h2.2M15.8 10H18M4.3 4.3l1.6 1.6M14.1 14.1l1.6 1.6M4.3 15.7l1.6-1.6M14.1 5.9l1.6-1.6"></path></svg>General</button>
+      <button role="tab" aria-selected="false" style="width: 72px; height: 50px; border: 0; border-radius: 7px; background: transparent; color: #48484D; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="14" height="5" rx="1.5"></rect><rect x="3" y="11" width="14" height="5" rx="1.5"></rect><path d="M6 6.5h.01M6 13.5h.01"></path></svg>Proxy</button>
+      <button role="tab" aria-selected="false" style="width: 72px; height: 50px; border: 0; border-radius: 7px; background: transparent; color: #48484D; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 18v-8M10 10 4.5 4.5M10 10l5.5-5.5M4.5 8V4.5H8M15.5 8V4.5H12"></path></svg>Routing</button>
+      <button role="tab" aria-selected="true" style="width: 72px; height: 50px; border: 0; border-radius: 7px; background: rgba(0,0,0,0.08); color: #0064D2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px; font-weight: 600">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="5" width="10" height="10" rx="2"></rect><path d="M8 2v3M12 2v3M8 15v3M12 15v3M2 8h3M2 12h3M15 8h3M15 12h3"></path></svg>Engines</button>
+      <button role="tab" aria-selected="false" style="width: 72px; height: 50px; border: 0; border-radius: 7px; background: transparent; color: #48484D; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 11px">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M3 5h9M15 5h2M3 10h3M9 10h8M3 15h7M13 15h4"></path><circle cx="13.5" cy="5" r="1.5"></circle><circle cx="7.5" cy="10" r="1.5"></circle><circle cx="11.5" cy="15" r="1.5"></circle></svg>Advanced</button>
+    </div>
+  </div>
+
+  <div style="flex: 1; min-height: 0; overflow: auto; padding: 22px 40px; display: flex; flex-direction: column; gap: 22px; box-sizing: border-box">
+
+    <!-- Engines -->
+    <section aria-labelledby="engH" style="display: flex; flex-direction: column; gap: 8px">
+      <h2 id="engH" style="margin: 0; font-size: 13px; font-weight: 700">Proxy engines</h2>
+      <p style="margin: 0; font-size: 12px; color: #6E6E73; line-height: 1.45">Each server runs on the engine that supports its protocol. Downloads come from the official GitHub releases and are checked against their SHA-256 checksums.</p>
+      <div style="background: #FFFFFF; border: 1px solid #E2E2E7; border-radius: 10px; display: flex; flex-direction: column">
+        <div style="display: flex; gap: 14px; padding: 14px">
+          <div style="width: 36px; height: 36px; border-radius: 9px; background: #E6F0FC; color: #0057B8; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 800" aria-hidden="true">X</div>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+            <div style="display: flex; align-items: baseline; gap: 8px"><span style="font-weight: 700">Xray core</span><span style="font-size: 12px; color: #48484D">25.10.15 installed</span></div>
+            <span style="font-size: 12px; color: #6E6E73; line-height: 1.45">VLESS · VMess · Trojan · Shadowsocks · Hysteria2 · WireGuard · SOCKS5 · HTTP(S)</span>
+            <span style="font-size: 12px; color: #A64B00; font-weight: 600">Version [NEXT VERSION] is available</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end">
+            <button style="height: 26px; padding: 0 12px; border-radius: 7px; border: 1px solid #0064D2; background: #0064D2; color: #FFFFFF; font-size: 12px; font-weight: 600">Update</button>
+            <select aria-label="Xray core version" style="height: 24px; border-radius: 6px; border: 1px solid #D5D5DA; background: #FFFFFF; font-size: 12px; color: #1D1D1F"><option>Other versions…</option></select>
+          </div>
+        </div>
+        <div style="height: 1px; background: #EDEDF0; margin-left: 64px"></div>
+        <div style="display: flex; gap: 14px; padding: 14px">
+          <div style="width: 36px; height: 36px; border-radius: 9px; background: #EFEAFB; color: #5B36B5; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; font-weight: 800" aria-hidden="true">sb</div>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+            <div style="display: flex; align-items: baseline; gap: 8px"><span style="font-weight: 700">sing-box</span><span style="font-size: 12px; color: #48484D">1.12 installed</span></div>
+            <span style="font-size: 12px; color: #6E6E73; line-height: 1.45">TUIC v5 · Hysteria · AnyTLS · ShadowTLS · NaiveProxy · SSH</span>
+            <span style="font-size: 12px; color: #1A7F37; font-weight: 600">Up to date</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end">
+            <button style="height: 26px; padding: 0 12px; border-radius: 7px; border: 1px solid #D5D5DA; background: #FFFFFF; color: #1D1D1F; font-size: 12px">Check Now</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Preferences -->
+    <section aria-labelledby="prefH" style="display: flex; flex-direction: column; gap: 8px">
+      <h2 id="prefH" style="margin: 0; font-size: 13px; font-weight: 700">Behavior</h2>
+      <div style="background: #FFFFFF; border: 1px solid #E2E2E7; border-radius: 10px; display: flex; flex-direction: column">
+        <label style="display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 14px">
+          <span style="flex: 1">When both engines support a protocol</span>
+          <select style="height: 24px; border-radius: 6px; border: 1px solid #D5D5DA; background: #FFFFFF; font-size: 13px; color: #1D1D1F"><option>Prefer Xray core</option></select>
+        </label>
+        <label style="display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 14px; border-top: 1px solid #EDEDF0">
+          <span style="flex: 1">Download an engine when a new server needs it</span>
+          <input type="checkbox" checked style="width: 14px; height: 14px; margin: 0; accent-color: #0064D2">
+        </label>
+        <label style="display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 14px; border-top: 1px solid #EDEDF0">
+          <span style="flex: 1">Check for engine updates</span>
+          <select style="height: 24px; border-radius: 6px; border: 1px solid #D5D5DA; background: #FFFFFF; font-size: 13px; color: #1D1D1F"><option>Weekly</option></select>
+        </label>
+        <label style="display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 14px; border-top: 1px solid #EDEDF0">
+          <span style="flex: 1">Latency test method</span>
+          <select style="height: 24px; border-radius: 6px; border: 1px solid #D5D5DA; background: #FFFFFF; font-size: 13px; color: #1D1D1F"><option>Real request (accurate, works for UDP)</option></select>
+        </label>
+      </div>
+    </section>
+
+    <!-- Local listeners -->
+    <section aria-labelledby="lisH" style="display: flex; flex-direction: column; gap: 8px">
+      <h2 id="lisH" style="margin: 0; font-size: 13px; font-weight: 700">Local proxy ports</h2>
+      <div style="background: #FFFFFF; border: 1px solid #E2E2E7; border-radius: 10px; display: flex; flex-direction: column">
+        <label style="display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 14px">
+          <span style="flex: 1">SOCKS5</span>
+          <input type="text" value="10808" aria-label="SOCKS5 port" style="width: 72px; height: 24px; box-sizing: border-box; border-radius: 6px; border: 1px solid #D5D5DA; font-size: 13px; text-align: right; padding: 0 8px; font-variant-numeric: tabular-nums">
+        </label>
+        <label style="display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 14px; border-top: 1px solid #EDEDF0">
+          <span style="flex: 1">HTTP</span>
+          <input type="text" value="10809" aria-label="HTTP port" style="width: 72px; height: 24px; box-sizing: border-box; border-radius: 6px; border: 1px solid #D5D5DA; font-size: 13px; text-align: right; padding: 0 8px; font-variant-numeric: tabular-nums">
+        </label>
+        <label style="display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 14px; border-top: 1px solid #EDEDF0">
+          <span style="flex: 1">Allow devices on my network to connect</span>
+          <input type="checkbox" style="width: 14px; height: 14px; margin: 0; accent-color: #0064D2">
+        </label>
+      </div>
+      <span style="font-size: 11px; color: #6E6E73; line-height: 1.4">Turning this on requires a username and password, so the proxy is never open to everyone.</span>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":760,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
