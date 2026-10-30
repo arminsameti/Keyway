@@ -28,6 +28,7 @@ type Node struct {
 	Port      int             `json:"port"`
 	RawLink   string          `json:"rawLink,omitempty"`
 	Profile   json.RawMessage `json:"profile,omitempty"` // profile.Profile when RawLink is empty
+	Chain     []string        `json:"chain,omitempty"`   // protocol "chain": IDs of the hop nodes, entry first
 	Source    string          `json:"source,omitempty"`  // subscription ID; empty for manually added nodes
 	CreatedAt time.Time       `json:"createdAt"`
 	LatencyMs int64           `json:"latencyMs"`
@@ -148,6 +149,7 @@ func (d AppData) Clone() AppData {
 	c.Nodes = make([]Node, len(d.Nodes))
 	for i, n := range d.Nodes {
 		n.Profile = append(json.RawMessage(nil), n.Profile...)
+		n.Chain = append([]string(nil), n.Chain...)
 		c.Nodes[i] = n
 	}
 	c.Engines = make(map[string]string, len(d.Engines))

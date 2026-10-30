@@ -57,7 +57,7 @@ struct ImportSheet: View {
                     Text(Format.previewSummary(preview)).font(.system(size: 11)).foregroundStyle(Palette.secondary)
                 }
                 previewList
-                Text("Recognizes VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP(S), Hysteria, Hysteria2, TUIC, WireGuard, AnyTLS, ShadowTLS, NaiveProxy and SSH links, plus Clash YAML and sing-box JSON.")
+                Text("Recognizes VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP(S), Hysteria, Hysteria2, TUIC, WireGuard, OpenVPN, AnyTLS, ShadowTLS, NaiveProxy and SSH links, plus Clash YAML and sing-box JSON.")
                     .font(.system(size: 11)).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 2)
             }
@@ -92,9 +92,9 @@ struct ImportSheet: View {
 
     private var intro: String {
         switch method {
-        case .paste: return "Paste share links, one per line. An https:// link is added as a subscription that refreshes on its own."
+        case .paste: return "Paste share links, one per line, or a whole WireGuard .conf or OpenVPN .ovpn. An https:// link is added as a subscription that refreshes on its own."
         case .subscription: return "Your provider's subscription URL. Its server list is fetched now and refreshed on its own."
-        case .file: return "A WireGuard .conf, Clash YAML, sing-box JSON or text file, or a screenshot of a QR code."
+        case .file: return "An OpenVPN .ovpn, WireGuard .conf, Clash YAML, sing-box JSON or text file, or a screenshot of a QR code."
         }
     }
 

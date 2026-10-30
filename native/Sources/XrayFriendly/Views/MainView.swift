@@ -123,6 +123,7 @@ struct SystemProxyCard: View {
 
 struct ServersView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         @Bindable var model = model
@@ -147,9 +148,17 @@ struct ServersView: View {
                 .help("Test latency (⌘T)")
                 .disabled(model.testing || model.nodes.isEmpty)
 
-                Button { model.openImport() } label: { Label("Add servers", systemImage: "plus") }
-                    .help("Add servers (⌘N)")
-                    .accessibilityLabel("Add servers")
+                Menu {
+                    Button("Add Servers…") { model.openImport() }
+                    Button("New Server…") { openWindow(id: "server", value: EditorTarget.new) }
+                    Button("New Proxy Chain…") { openWindow(id: "server", value: EditorTarget.newChain) }
+                } label: {
+                    Label("Add servers", systemImage: "plus")
+                } primaryAction: {
+                    model.openImport()
+                }
+                .help("Add servers (⌘N)")
+                .accessibilityLabel("Add servers")
 
                 Button { model.showInspector.toggle() } label: { Label("Server details", systemImage: "sidebar.trailing") }
                     .help("Show or hide server details")
@@ -266,6 +275,10 @@ struct ServerTable: View {
             .width(24)
             TableColumn("Name", value: \.displayName) { n in
                 HStack(spacing: 8) {
+                    if n.isChain {
+                        Image(systemName: "link").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.accentText)
+                            .accessibilityLabel("Chain")
+                    }
                     if let cc = n.countryCode {
                         Text(cc).font(.system(size: 10, weight: .bold)).tracking(0.3)
                             .foregroundStyle(Palette.tertiary)
@@ -318,7 +331,7 @@ struct ServerTable: View {
                 Divider()
                 Button("Copy Link") { model.copyLink(n) }.disabled(!n.hasLink)
                 Button("Show QR") { model.qrNode = n }.disabled(!n.hasLink)
-                Button("Edit…") { openWindow(id: "server", value: EditorTarget.edit(id)) }
+                Button(n.isChain ? "Edit Chain…" : "Edit…") { openWindow(id: "server", value: EditorTarget.edit(id)) }
                 Divider()
                 Button("Delete", role: .destructive) { model.delete(Array(ids)) }
             }
@@ -330,7 +343,7 @@ struct ServerTable: View {
                 ContentUnavailableView {
                     Label("No servers yet", systemImage: "globe")
                 } description: {
-                    Text("Paste a share link, a subscription URL or a config file.")
+                    Text("Paste a share link, a subscription URL, an OpenVPN or WireGuard config file, or a Clash or sing-box config.")
                 } actions: {
                     Button("Add Servers…") { model.openImport() }.buttonStyle(.borderedProminent)
                 }
@@ -360,20 +373,24 @@ struct Inspector: View {
                     Text(n.displayName).font(.system(size: 17, weight: .bold)).lineLimit(2)
                     Text(Format.latencyLong(n.latencyMs)).font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.latency(n.latencyMs).fg)
                 }
-                Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 9) {
-                    detail("Address", n.server, mono: true)
-                    detail("Port", String(n.port))
-                    detail("Protocol", n.protocolName)
-                    detail("Transport", n.transport)
-                    detail("Security", n.security)
-                    detail("SNI", n.sni)
-                    detail("Engine", n.engine.map { model.engineBadge($0) } ?? "None — \(n.engineReason ?? "unsupported")")
+                if n.isChain {
+                    ChainRouteCard(node: n)
+                } else {
+                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 9) {
+                        detail("Address", n.server, mono: true)
+                        detail("Port", String(n.port))
+                        detail("Protocol", n.protocolName)
+                        detail("Transport", n.transport)
+                        detail("Security", n.security)
+                        detail("SNI", n.sni)
+                        detail("Engine", n.engine.map { model.engineBadge($0) } ?? "None — \(n.engineReason ?? "unsupported")")
+                    }
+                    .font(.system(size: 12))
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Palette.card))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.separator))
                 }
-                .font(.system(size: 12))
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Palette.card))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.separator))
 
                 VStack(spacing: 8) {
                     Button {
@@ -390,7 +407,7 @@ struct Inspector: View {
                             .disabled(!n.hasLink)
                     }
                     .controlSize(.regular)
-                    Button("Edit Server…") { openWindow(id: "server", value: EditorTarget.edit(n.id)) }
+                    Button(n.isChain ? "Edit Chain…" : "Edit Server…") { openWindow(id: "server", value: EditorTarget.edit(n.id)) }
                         .buttonStyle(.link).font(.system(size: 12))
                 }
             } else {
@@ -487,5 +504,53 @@ struct FlowLayout: Layout {
             rows[rows.count - 1] = r
         }
         return rows
+    }
+}
+
+/// The inspector's description of a chain: its servers in the order traffic takes.
+struct ChainRouteCard: View {
+    let node: Node
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Route").font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.secondary)
+            let hops = node.hopList
+            ForEach(Array(hops.enumerated()), id: \.offset) { i, h in
+                HStack(spacing: 8) {
+                    Text(verbatim: "\(i + 1)").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 18, height: 18).background(Circle().fill(h.missing ? Palette.error : Palette.accent))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(h.missing ? "Missing server" : h.name).font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(h.missing ? Palette.error : Color.primary).lineLimit(1)
+                        Text([h.protocolName.isEmpty ? nil : h.protocolName, h.transport, i == 0 ? "entry" : (i == hops.count - 1 ? "exit" : nil)]
+                            .compactMap { $0 }.joined(separator: " · "))
+                            .font(.system(size: 11)).foregroundStyle(Palette.secondary).lineLimit(1)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Hop \(i + 1), \(h.missing ? "missing server" : h.name)")
+            }
+            Divider()
+            HStack {
+                Text("Engine").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                Spacer()
+                Text(node.engineName ?? "None").font(.system(size: 12))
+            }
+            if let err = node.error, !err.isEmpty {
+                Label(err, systemImage: "exclamationmark.triangle").font(.system(size: 11)).foregroundStyle(Palette.error)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let why = node.engineReason, node.engine == nil {
+                Label(why, systemImage: "exclamationmark.triangle").font(.system(size: 11)).foregroundStyle(Palette.warn)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Palette.card))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.separator))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Chain route")
     }
 }

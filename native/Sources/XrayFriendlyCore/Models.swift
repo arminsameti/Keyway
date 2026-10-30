@@ -14,6 +14,7 @@ public struct Status: Codable, Equatable, Sendable {
     public var transport: String?
     public var engine: String?
     public var engineVersion: String?
+    public var engineLabel: String? // every engine of the connection, e.g. "sing-box + Xray core"
     public var uptimeSec: Int = 0
     public var routingMode = "bypass-private"
     public var autoPick = false
@@ -44,18 +45,42 @@ public struct Node: Codable, Identifiable, Hashable, Sendable {
     public var engineReason: String?
     public var hasLink: Bool
     public var error: String?
+    public var chain: Bool?
+    public var hops: [HopInfo]?
+    public var relaysUdp: Bool?
+
+    public var isChain: Bool { chain ?? false }
+    public var hopList: [HopInfo] { hops ?? [] }
+    /// Can carry UDP for a following hop of a chain.
+    public var canRelayUDP: Bool { relaysUdp ?? false }
 
     public init(id: String, name: String, protocol: String, server: String, port: Int, rawLink: String? = nil,
                 source: String? = nil, latencyMs: Int = -1, displayName: String? = nil, countryCode: String? = nil,
                 protocolName: String? = nil, transport: String = "TCP", security: String = "TLS", sni: String = "—",
                 udp: Bool = false, engine: String? = "xray", engineName: String? = "Xray core", engineInstalled: Bool = true,
-                engineReason: String? = nil, hasLink: Bool = true, error: String? = nil) {
+                engineReason: String? = nil, hasLink: Bool = true, error: String? = nil,
+                chain: Bool = false, hops: [HopInfo]? = nil, relaysUdp: Bool = false) {
         self.id = id; self.name = name; self.protocol = `protocol`; self.server = server; self.port = port
         self.rawLink = rawLink; self.source = source; self.latencyMs = latencyMs
         self.displayName = displayName ?? name; self.countryCode = countryCode
         self.protocolName = protocolName ?? `protocol`; self.transport = transport; self.security = security
         self.sni = sni; self.udp = udp; self.engine = engine; self.engineName = engineName
         self.engineInstalled = engineInstalled; self.engineReason = engineReason; self.hasLink = hasLink; self.error = error
+        self.chain = chain; self.hops = hops; self.relaysUdp = relaysUdp
+    }
+}
+
+/// One server of a chain, entry first.
+public struct HopInfo: Codable, Hashable, Sendable, Identifiable {
+    public var id: String
+    public var name: String
+    public var countryCode: String?
+    public var protocolName: String
+    public var transport: String?
+    public var missing: Bool
+    public init(id: String, name: String, countryCode: String? = nil, protocolName: String, transport: String? = nil, missing: Bool = false) {
+        self.id = id; self.name = name; self.countryCode = countryCode; self.protocolName = protocolName
+        self.transport = transport; self.missing = missing
     }
 }
 
@@ -231,7 +256,51 @@ public struct Profile: Codable, Equatable, Sendable {
     public var ssh: SSH?
     public var anytls: AnyTLS?
     public var naive: Naive?
+    public var openvpn: OpenVPN?
     public init(protocol p: String) { self.protocol = p }
+
+    /// An OpenVPN client profile (TLS mode). Certificates and keys are PEM
+    /// text. Every field of the backend's profile is kept so that editing an
+    /// imported .ovpn never drops an option the form does not show.
+    public struct OpenVPN: Codable, Equatable, Sendable {
+        public var remotes: [Remote]?
+        public var remoteRandom: Bool?
+        public var ca: String?
+        public var cert: String?
+        public var key: String?
+        public var peerFingerprint: [String]?
+        public var needsCredential: Bool?
+        public var controlWrap: ControlWrap?
+        public var dataCiphers: [String]?
+        public var cipher: String?
+        public var auth: String?
+        public var compression: String?
+        public var compLzo: String?
+        public var remoteCertTls: String?
+        public var verifyName: String?
+        public var verifyNameType: String?
+        public var tlsVersionMin: String?
+        public var renegSec: Int?
+        public var pingInterval: Int?
+        public var pingRestart: Int?
+        public var mssfix: Int?
+        public var fragment: Int?
+        public var routeNoPull: Bool?
+        public var topology: String?
+        public init() {}
+
+        public struct Remote: Codable, Equatable, Sendable {
+            public var server: String
+            public var port: Int
+            public var network: String?
+        }
+        public struct ControlWrap: Codable, Equatable, Sendable {
+            public var type: String // tls_auth | tls_crypt | tls_crypt_v2
+            public var key: String
+            public var direction: String?
+            public init(type: String, key: String, direction: String? = nil) { self.type = type; self.key = key; self.direction = direction }
+        }
+    }
 
     public struct Transport: Codable, Equatable, Sendable {
         public var type: String = ""

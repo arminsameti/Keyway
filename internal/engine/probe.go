@@ -47,22 +47,55 @@ func (c *cappedBuffer) String() string {
 	return strings.TrimSpace(c.buf.String())
 }
 
+// TempProc is one throw-away engine process of a probe.
+type TempProc struct {
+	Engine   Engine
+	Install  Install
+	Cfg      []byte
+	WaitPort int // loopback port that accepts connections once the process is ready
+}
+
 // StartTemp launches a throw-away engine with cfg and waits until its SOCKS
 // inbound on 127.0.0.1:port accepts connections. stop terminates it and
 // removes its files.
 func StartTemp(ctx context.Context, e Engine, in Install, cfg []byte, port int) (stop func(), err error) {
+	return StartTempChain(ctx, []TempProc{{Engine: e, Install: in, Cfg: cfg, WaitPort: port}})
+}
+
+// StartTempChain starts the processes of a chain in order, each waiting until
+// it listens, so a later process can dial the bridge of an earlier one. stop
+// terminates them all, last first.
+func StartTempChain(ctx context.Context, procs []TempProc) (stop func(), err error) {
+	var stops []func()
+	stopAll := func() {
+		for i := len(stops) - 1; i >= 0; i-- {
+			stops[i]()
+		}
+	}
+	for _, tp := range procs {
+		s, err := startTempProc(ctx, tp)
+		if err != nil {
+			stopAll()
+			return nil, err
+		}
+		stops = append(stops, s)
+	}
+	return stopAll, nil
+}
+
+func startTempProc(ctx context.Context, tp TempProc) (stop func(), err error) {
 	dir, err := os.MkdirTemp("", "xf-probe-*")
 	if err != nil {
 		return nil, err
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
 	path := filepath.Join(dir, "config.json")
-	if err := os.WriteFile(path, cfg, 0o600); err != nil {
+	if err := os.WriteFile(path, tp.Cfg, 0o600); err != nil {
 		cleanup()
 		return nil, err
 	}
 
-	l := e.Launch(in, path)
+	l := tp.Engine.Launch(tp.Install, path)
 	cmd := exec.CommandContext(ctx, l.Binary, l.Args...)
 	cmd.Env = append(os.Environ(), l.Env...)
 	var out cappedBuffer
@@ -79,7 +112,7 @@ func StartTemp(ctx context.Context, e Engine, in Install, cfg []byte, port int) 
 		cleanup()
 	}
 
-	addr := net.JoinHostPort("127.0.0.1", fmt.Sprint(port))
+	addr := net.JoinHostPort("127.0.0.1", fmt.Sprint(tp.WaitPort))
 	deadline := time.Now().Add(4 * time.Second)
 	for time.Now().Before(deadline) {
 		select {

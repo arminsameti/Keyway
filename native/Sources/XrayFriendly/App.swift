@@ -5,6 +5,7 @@ import XrayFriendlyCore
 /// What the server editor window edits.
 enum EditorTarget: Codable, Hashable {
     case new
+    case newChain     // opens with "Proxy Chain" selected
     case edit(String) // node ID
 }
 
@@ -16,6 +17,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { Snapshots.renderAll(to: CommandLine.arguments[i + 1]) }
             exit(0)
         }
+        // New Server and Onboarding are separate windows; macOS would otherwise
+        // open them as tabs of the main window (e.g. while it is full screen).
+        NSWindow.allowsAutomaticWindowTabbing = false
         Activation.install()
     }
 
@@ -90,6 +94,8 @@ struct AppCommands: Commands {
                 .keyboardShortcut("n")
             Button("New Server…") { openWindow(id: "server", value: EditorTarget.new) }
                 .keyboardShortcut("n", modifiers: [.command, .option])
+            Button("New Proxy Chain…") { openWindow(id: "server", value: EditorTarget.newChain) }
+                .keyboardShortcut("n", modifiers: [.command, .option, .shift])
             Button("Add Servers from Clipboard") { openWindow(id: "main"); model.addFromClipboard() }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
         }

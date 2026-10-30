@@ -108,7 +108,7 @@ func TestNewRoutesAreGuarded(t *testing.T) {
 		{"POST", "/api/import/preview"}, {"POST", "/api/nodes"}, {"PUT", "/api/nodes/x"}, {"POST", "/api/nodes/test"},
 		{"GET", "/api/engines"}, {"GET", "/api/engines/xray/releases"}, {"POST", "/api/engines/xray/download"},
 		{"POST", "/api/engines/xray/use"}, {"POST", "/api/engines/xray/check"},
-		{"POST", "/api/links/parse"}, {"GET", "/api/nodes/x/profile"}, {"GET", "/api/jobs"}, {"GET", "/api/jobs/1"},
+		{"POST", "/api/links/parse"}, {"POST", "/api/chains/plan"}, {"GET", "/api/nodes/x/profile"}, {"GET", "/api/jobs"}, {"GET", "/api/jobs/1"},
 	}
 	for _, rt := range routes {
 		if w := do(h, rt.method, rt.path, "{}", noToken()); w.Code != http.StatusUnauthorized {
@@ -408,5 +408,39 @@ func TestParseLinkAndNodeProfile(t *testing.T) {
 	}
 	if w := do(h, "GET", "/api/jobs/999", nil); w.Code != http.StatusNotFound {
 		t.Fatalf("unknown job -> %d", w.Code)
+	}
+}
+
+func TestChainEndpoints(t *testing.T) {
+	h := newServer(t)
+	id := func(link string) string {
+		n := decodeBody(t, do(h, "POST", "/api/nodes", map[string]string{"link": link}))["node"].(map[string]any)
+		return n["id"].(string)
+	}
+	a := id("vless://u@a.example.net:443?security=tls#A")
+	b := id("trojan://p@b.example.net:443#B")
+
+	m := decodeBody(t, do(h, "POST", "/api/chains/plan", map[string]any{"chain": []string{a, b}}))
+	plan, _ := m["plan"].(map[string]any)
+	if m["ok"] != true || plan["engine"] != "xray" || plan["processes"].(float64) != 1 || plan["engineName"] != "Xray core" {
+		t.Fatalf("plan: %v", m)
+	}
+	if w := do(h, "POST", "/api/chains/plan", map[string]any{"chain": []string{a}}); w.Code != http.StatusBadRequest {
+		t.Fatalf("one server is not a chain -> %d", w.Code)
+	}
+	w := do(h, "POST", "/api/nodes", map[string]any{"name": "Pair", "chain": []string{a, b}})
+	n := decodeBody(t, w)["node"].(map[string]any)
+	if w.Code != 200 || n["chain"] != true || n["protocolName"] != "Chain" || len(n["hops"].([]any)) != 2 {
+		t.Fatalf("create chain: %d %v", w.Code, n)
+	}
+	e := decodeBody(t, do(h, "GET", "/api/nodes/"+n["id"].(string)+"/profile", nil))
+	if _, has := e["profile"]; has || len(e["chain"].([]any)) != 2 {
+		t.Fatalf("edit view of a chain: %v", e)
+	}
+	if w := do(h, "PUT", "/api/nodes/"+n["id"].(string), map[string]any{"name": "Renamed", "chain": []string{b, a}}); w.Code != 200 {
+		t.Fatalf("update chain -> %d", w.Code)
+	}
+	if w := do(h, "POST", "/api/nodes", map[string]any{"chain": []string{a, "missing"}}); w.Code != http.StatusBadRequest {
+		t.Fatalf("unknown hop -> %d", w.Code)
 	}
 }

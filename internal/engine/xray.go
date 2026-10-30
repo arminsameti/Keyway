@@ -18,8 +18,12 @@ func (Xray) DisplayName() string { return "Xray core" }
 
 func (Xray) Supports(p profile.Profile) error { return xray.Supports(p) }
 
-func (Xray) Config(p profile.Profile, s models.Settings) ([]byte, error) {
-	cfg, err := xray.BuildConfig(p, s)
+func (Xray) SupportsSegment(hops []profile.Profile, hasUpstream bool) error {
+	return xray.SupportsSegment(hops, hasUpstream)
+}
+
+func (Xray) Config(seg profile.Segment, s models.Settings) ([]byte, error) {
+	cfg, err := xray.BuildConfig(seg, s)
 	if err != nil {
 		return nil, err
 	}
@@ -30,8 +34,8 @@ func (Xray) Config(p profile.Profile, s models.Settings) ([]byte, error) {
 	return b, nil
 }
 
-func (Xray) ProbeConfig(p profile.Profile, port int) ([]byte, error) {
-	cfg, err := xray.ProbeConfig(p, port)
+func (Xray) ProbeConfig(seg profile.Segment, port int) ([]byte, error) {
+	cfg, err := xray.ProbeConfig(seg, port)
 	if err != nil {
 		return nil, err
 	}

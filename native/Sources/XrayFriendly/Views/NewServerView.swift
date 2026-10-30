@@ -7,11 +7,18 @@ struct NewServerView: View {
     let target: EditorTarget
     /// Protocol selected when the window opens for a new server.
     var initialProtocol: String?
+    /// A ready-made chain and plan shown instead of loading (snapshot rendering).
+    var sampleChain: (chain: ChainForm, plan: ChainPlan)?
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
 
     @State private var form = ServerForm(protocolID: "vless")
     @State private var forms: [String: ServerForm] = [:] // keep what was typed per protocol
+    @State private var chainMode = false
+    @State private var chain = ChainForm()
+    @State private var chainPlan: ChainPlan?
+    @State private var chainProblem: String?
+    @State private var planning = false
     @State private var status: String?
     @State private var statusIsError = false
     @State private var busy = false
@@ -24,21 +31,25 @@ struct NewServerView: View {
             Divider()
             VStack(spacing: 0) {
                 header.padding(.horizontal, 22).padding(.top, 18)
-                Form {
-                    ForEach(form.sections) { section in
-                        Section {
-                            ForEach(section.fields) { field($0) }
-                        } header: {
-                            Text(section.title)
-                        } footer: {
-                            if let note = section.note {
-                                Text(note).font(.system(size: 11)).foregroundStyle(Palette.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                if chainMode {
+                    ChainEditor(chain: $chain, plan: chainPlan, problem: chainProblem, planning: planning)
+                } else {
+                    Form {
+                        ForEach(form.sections) { section in
+                            Section {
+                                ForEach(section.fields) { field($0) }
+                            } header: {
+                                Text(section.title)
+                            } footer: {
+                                if let note = section.note {
+                                    Text(note).font(.system(size: 11)).foregroundStyle(Palette.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                                }
                             }
                         }
                     }
+                    .formStyle(.grouped)
+                    .scrollContentBackground(.hidden)
                 }
-                .formStyle(.grouped)
-                .scrollContentBackground(.hidden)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { footer }
@@ -46,18 +57,34 @@ struct NewServerView: View {
         .tint(Palette.accent)
         .navigationTitle(editingID == nil ? "New Server" : "Edit Server")
         .onPasteCommand(of: [.plainText]) { providers in
+            guard !chainMode else { return }
             _ = providers.first?.loadObject(ofClass: NSString.self) { s, _ in
                 if let s = s as? String { Task { @MainActor in await fill(from: s) } }
             }
         }
         .task(id: target) { await loadForEdit() }
-        .onAppear { if editingID == nil, let p = initialProtocol { form = ServerForm(protocolID: p) } }
+        .task(id: chain.hops) { await planChain() }
+        .onAppear {
+            guard editingID == nil else { return }
+            if sampleChain != nil || target == .newChain || initialProtocol == "chain" { chainMode = true } else if let p = initialProtocol { form = ServerForm(protocolID: p) }
+        }
     }
 
     // MARK: layout
 
     private var protocolList: some View {
-        List(selection: Binding(get: { form.protocolID }, set: { switchProtocol($0) })) {
+        List(selection: Binding(get: { chainMode ? "chain" : form.protocolID }, set: { id in
+            if id == "chain" { chainMode = true } else { chainMode = false; switchProtocol(id) }
+        })) {
+            Section("Combine") {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Proxy Chain").font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary)
+                    Text("Several servers in a row").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
+                .tag("chain")
+                .accessibilityLabel("Proxy Chain, several servers in a row")
+            }
             ForEach([("xray", "Xray core"), ("sing-box", "sing-box")], id: \.0) { engine, title in
                 Section(title) {
                     ForEach(ServerForms.all.filter { $0.engine == engine }) { d in
@@ -65,7 +92,7 @@ struct NewServerView: View {
                             Text(d.label).font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary)
                             Text(d.hint).font(.system(size: 11)).foregroundStyle(.secondary)
                         }
-                        .padding(.vertical, 2)
+                        .padding(.vertical, 0)
                         .tag(d.id)
                         .accessibilityLabel("\(d.label), \(d.hint)")
                     }
@@ -73,23 +100,31 @@ struct NewServerView: View {
             }
         }
         .listStyle(.sidebar)
+        .environment(\.defaultMinListRowHeight, 32)
         .frame(width: 210)
         .accessibilityLabel("Protocol")
     }
 
     private var header: some View {
-        let d = form.def
-        let badge = Palette.engineBadge(form.engine)
+        let title = chainMode ? "Proxy Chain" : form.def.label
+        let about = chainMode
+            ? "Route through several servers in a row, such as OpenVPN, then Xray, then WireGuard. Each server only knows its neighbours."
+            : form.def.about
+        let engine = chainMode ? (chainPlan?.engine ?? "xray") : form.engine
+        let badge = Palette.engineBadge(engine)
+        let badgeText: String? = chainMode ? chainPlan.map { "Runs on \($0.engineName)" } : "Runs on \(model.engineBadge(form.engine))"
         return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(d.label).font(.system(size: 17, weight: .bold))
-                Text(d.about).font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                Text(title).font(.system(size: 17, weight: .bold))
+                Text(about).font(.system(size: 12)).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Text("Runs on \(model.engineBadge(form.engine))")
-                .font(.system(size: 11, weight: .semibold)).foregroundStyle(badge.fg)
-                .padding(.horizontal, 8).padding(.vertical, 4)
-                .background(RoundedRectangle(cornerRadius: 6).fill(badge.bg))
+            if let badgeText {
+                Text(badgeText)
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(badge.fg)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(badge.bg))
+            }
         }
     }
 
@@ -98,13 +133,13 @@ struct NewServerView: View {
             Divider()
             HStack(spacing: 8) {
                 Button("Test Connection") { test() }.disabled(busy)
-                Text(status ?? "Paste a link anywhere in this window to fill the form")
+                Text(status ?? (chainMode ? "Test Connection checks every hop end to end" : "Paste a link or a config file anywhere in this window to fill the form"))
                     .font(.system(size: 12))
                     .foregroundStyle(statusIsError ? Palette.error : (status == nil ? Palette.secondary : Palette.greenText))
                     .lineLimit(2)
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(editingID == nil ? "Add Server" : "Save") { save() }
+                Button(editingID == nil ? (chainMode ? "Add Chain" : "Add Server") : "Save") { save() }
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(busy)
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
@@ -127,6 +162,24 @@ struct NewServerView: View {
                 SecureField(f.label, text: text, prompt: Text(f.placeholder))
                     .labelsHidden().multilineTextAlignment(.trailing)
                     .font(f.mono ? .system(size: 11, design: .monospaced) : .system(size: 13))
+            }
+        case .multiline:
+            VStack(alignment: .leading, spacing: 4) {
+                Text(f.label)
+                TextEditor(text: text)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(height: 72)
+                    .scrollContentBackground(.hidden)
+                    .padding(4)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
+                    .overlay(alignment: .topLeading) {
+                        if (form.values[f.key] ?? "").isEmpty {
+                            Text(f.placeholder).font(.system(size: 11, design: .monospaced)).foregroundStyle(Palette.secondary)
+                                .padding(.horizontal, 9).padding(.vertical, 8).allowsHitTesting(false)
+                        }
+                    }
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Palette.cardBorder))
+                    .accessibilityLabel(f.label)
             }
         case .select(let options):
             Picker(f.label, selection: Binding(get: { form.choice(f) }, set: { form.values[f.key] = $0 })) {
@@ -154,19 +207,46 @@ struct NewServerView: View {
         guard let id = editingID, let client = model.client else { return }
         do {
             let body = try await client.nodeProfile(id)
-            form = ServerForm(profile: body.profile, name: body.name)
+            if let hops = body.chain {
+                chainMode = true
+                chain = ChainForm(name: body.name, hops: hops)
+            } else if let p = body.profile {
+                form = ServerForm(profile: p, name: body.name)
+            }
         } catch {
             show(error.localizedDescription, error: true)
         }
     }
 
+    /// Asks the backend what saving this chain would do. It is the one source of
+    /// truth for the rules (UDP between hops, which engines can run which hops).
+    private func planChain() async {
+        if let sampleChain { chain = sampleChain.chain; chainPlan = sampleChain.plan; return }
+        chainPlan = nil
+        chainProblem = nil
+        guard chainMode, chain.blocker(in: model.nodes) == nil, let client = model.client else { return }
+        planning = true
+        defer { planning = false }
+        try? await Task.sleep(for: .milliseconds(250)) // debounce quick edits
+        guard !Task.isCancelled else { return }
+        do {
+            chainPlan = try await client.planChain(hops: chain.hops)
+        } catch {
+            if !Task.isCancelled { chainProblem = error.localizedDescription }
+        }
+    }
+
     private func fill(from text: String) async {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard t.contains("://") || t.lowercased().contains("[interface]"), let client = model.client else { return }
+        let lower = t.lowercased()
+        let looksLikeConfig = t.contains("://") || lower.contains("[interface]")
+            || (lower.contains("remote ") && (lower.contains("<ca>") || lower.contains("client")))
+        guard looksLikeConfig, let client = model.client else { return }
         do {
             let body = try await client.parseLink(t)
-            form = ServerForm(profile: body.profile, name: body.name)
-            show("Filled from the pasted link.", error: false)
+            guard let p = body.profile else { return }
+            form = ServerForm(profile: p, name: body.name)
+            show("Filled from the pasted text.", error: false)
         } catch {
             show(error.localizedDescription, error: true)
         }
@@ -174,6 +254,21 @@ struct NewServerView: View {
 
     private func test() {
         guard let client = model.client else { return }
+        if chainMode {
+            if let blocker = chain.blocker(in: model.nodes) { show(blocker, error: true); return }
+            busy = true
+            show("Testing every hop…", error: false)
+            Task {
+                defer { busy = false }
+                do {
+                    let ms = try await client.testChain(hops: chain.hops)
+                    show("Works · \(Format.latencyLong(ms))", error: false)
+                } catch {
+                    show(error.localizedDescription, error: true)
+                }
+            }
+            return
+        }
         do {
             let (name, profile) = try form.profile()
             busy = true
@@ -194,6 +289,27 @@ struct NewServerView: View {
 
     private func save() {
         guard let client = model.client else { return }
+        if chainMode {
+            if let blocker = chain.blocker(in: model.nodes) { show(blocker, error: true); return }
+            busy = true
+            Task {
+                defer { busy = false }
+                do {
+                    let node: Node
+                    if let id = editingID {
+                        node = try await client.updateChain(id, name: chain.name, hops: chain.hops)
+                    } else {
+                        node = try await client.createChain(name: chain.name, hops: chain.hops)
+                    }
+                    await model.refreshState()
+                    model.selectedNodeID = node.id
+                    dismiss()
+                } catch {
+                    show(error.localizedDescription, error: true)
+                }
+            }
+            return
+        }
         do {
             let (name, profile) = try form.profile()
             busy = true

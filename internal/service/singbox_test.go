@@ -20,10 +20,11 @@ import (
 // "check", and otherwise runs like a proxy.
 const fakeSingBox = `#!/bin/sh
 case "$1" in
-  version) printf 'sing-box version 1.14.4\n\nTags: with_quic,with_utls,with_wireguard\n'; exit 0;;
-  check) exit 0;;
+  version) printf 'sing-box version 1.14.4\n\nTags: with_quic,with_utls,with_wireguard,with_openvpn\n'; exit 0;;
+  check) [ -f "$(dirname "$0")/reject" ] && { echo "bad config: simulated" >&2; exit 1; }; exit 0;;
 esac
 echo "fake sing-box started"
+[ -f "$(dirname "$0")/crash" ] && { sleep 2.4; exit 1; }
 exec sleep 30
 `
 

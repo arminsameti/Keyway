@@ -64,7 +64,12 @@ type Service struct {
 
 	curMu sync.Mutex
 	cur   runInfo // what the running engine was started with
-	jobs  jobs    // background engine downloads
+
+	// extra holds the earlier processes of a multi-process chain; s.run is the
+	// last one, which serves the user's inbounds.
+	extraMu sync.Mutex
+	extra   []*engine.Runner
+	jobs    jobs // background engine downloads
 
 	life   sync.Mutex // serialises connect / disconnect / reconnect
 	subMu  sync.Mutex // serialises subscription refreshes
@@ -158,8 +163,9 @@ func migrateNodeIDs(d *models.AppData) {
 // runInfo describes what the running engine was started with.
 type runInfo struct {
 	NodeID  string
-	Engine  engine.Engine
+	Engine  engine.Engine // the process that carries the user's traffic
 	Version string
+	Label   string // every engine of the connection, e.g. "sing-box + Xray core"
 }
 
 func (s *Service) setCurrent(r runInfo) {
@@ -225,6 +231,7 @@ type Status struct {
 	Transport       string   `json:"transport,omitempty"`
 	Engine          string   `json:"engine,omitempty"` // engine name while running
 	EngineVersion   string   `json:"engineVersion,omitempty"`
+	EngineLabel     string   `json:"engineLabel,omitempty"` // all engines of the connection
 	UptimeSec       int64    `json:"uptimeSec"`
 	RoutingMode     string   `json:"routingMode"`
 	AutoPick        bool     `json:"autoPick"`
@@ -247,7 +254,7 @@ func (s *Service) Status() Status {
 			id = cur.NodeID
 		}
 		if cur.Engine != nil {
-			st.Engine, st.EngineVersion = cur.Engine.Name(), cur.Version
+			st.Engine, st.EngineVersion, st.EngineLabel = cur.Engine.Name(), cur.Version, cur.Label
 		}
 		if !st.StartedAt.IsZero() {
 			st.UptimeSec = int64(time.Since(st.StartedAt).Seconds())

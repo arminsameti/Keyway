@@ -404,6 +404,13 @@ extension AppModel {
             n("home", "CA", "Home server", "vless", "VLESS", "gRPC", 24, "home.example.org", 2053, "TLS", "home.example.org", sub: false),
             n("wg1", "CA", "Home WireGuard", "wireguard", "WireGuard", "UDP", 31, "wg.example.org", 51820, "Curve25519 keys", "—", sub: false),
             n("old1", "US", "Old test node", "socks", "SOCKS", "TCP", -2, "198.51.100.7", 1080, "None", "—", sub: false),
+            n("ovpn1", "US", "Office VPN", "openvpn", "OpenVPN", "UDP", 66, "vpn.example.com", 1194, "TLS · tls-crypt", "—", sub: false, engine: "sing-box"),
+            Node(id: "chain1", name: "Office → Frankfurt → Home", protocol: "chain", server: "", port: 0, latencyMs: 144,
+                 displayName: "Office → Frankfurt → Home", protocolName: "Chain", transport: "3 hops", security: "—", sni: "—", udp: true,
+                 engine: "sing-box", engineName: "sing-box", hasLink: false, chain: true,
+                 hops: [HopInfo(id: "ovpn1", name: "Office VPN", countryCode: "US", protocolName: "OpenVPN", transport: "UDP"),
+                        HopInfo(id: "fra1", name: "Frankfurt 01", countryCode: "DE", protocolName: "VLESS", transport: "Reality"),
+                        HopInfo(id: "wg1", name: "Home WireGuard", countryCode: "CA", protocolName: "WireGuard", transport: "UDP")]),
         ]
         subscriptions = [Subscription(id: "s1", name: "My Subscription", url: "https://sub.example.net/api/v1/client/token",
                                       updatedAt: Date().addingTimeInterval(-7200), nodeCount: 7, format: "clash")]
@@ -439,6 +446,8 @@ extension AppModel {
         status = st
         ready = true
     }
+
+    func selectChain() { selectedNodeID = "chain1"; activeNodeId = "chain1" }
 
     /// The onboarding mockup's state: Xray installed, sing-box downloading, no servers yet.
     func loadSampleOnboarding() {

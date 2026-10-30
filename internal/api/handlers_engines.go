@@ -157,11 +157,36 @@ func (s *Server) parseLink(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]any{"profile": p, "name": name})
 }
 
+// nodeProfile returns a node in editable form: {name, profile} for a server,
+// {name, chain} for a chain.
 func (s *Server) nodeProfile(w http.ResponseWriter, r *http.Request) {
-	p, name, err := s.svc.NodeProfile(r.PathValue("id"))
+	v, err := s.svc.NodeForEdit(r.PathValue("id"))
 	if err != nil {
 		failErr(w, err, http.StatusInternalServerError)
 		return
 	}
-	ok(w, map[string]any{"profile": p, "name": name})
+	out := map[string]any{"name": v.Name}
+	if v.Profile != nil {
+		out["profile"] = v.Profile
+	}
+	if v.Chain != nil {
+		out["chain"] = v.Chain
+	}
+	ok(w, out)
+}
+
+func (s *Server) planChain(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Chain []string `json:"chain"`
+	}
+	if err := decode(r, &b, false); err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	pl, err := s.svc.PlanChain(b.Chain)
+	if err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	ok(w, map[string]any{"plan": pl})
 }

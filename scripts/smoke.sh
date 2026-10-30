@@ -29,6 +29,20 @@ curl -s -H "X-XF-Token: $TOKEN" "$B/api/nodes" | grep -q '"nodes":\[\]' || fail 
 [ "$(code -H "X-XF-Token: $TOKEN" "$B/api/cores")" = 200 ] || fail "cores alias"
 [ "$(code -X POST "${J[@]}" -d '{"profile":{"protocol":"http","server":"p.example","port":3128}}' "$B/api/nodes")" = 200 ] || fail "create node"
 [ "$(code -X POST -H 'Content-Type: application/json' -d '{}' "$B/api/import/preview")" = 401 ] || fail "preview needs the token"
+idof() { grep -o '"id":"[0-9a-f]*"' | head -1 | cut -d'"' -f4; }
+A="$(curl -s -X POST "${J[@]}" -d '{"link":"trojan://p@a.example:443#A"}' "$B/api/nodes" | idof)"
+C="$(curl -s -X POST "${J[@]}" -d '{"link":"vless://u@c.example:443?security=tls#C"}' "$B/api/nodes" | idof)"
+[ -n "$A" ] && [ -n "$C" ] || fail "create the two servers of a chain"
+# JSON bodies are built in variables: macOS's bash 3.2 brace-expands a {"a":["x","y"]} literal inside "$(...)".
+PAIR="{\"chain\":[\"$A\",\"$C\"]}"
+ONE="{\"chain\":[\"$A\"]}"
+NAMED="{\"name\":\"Pair\",\"chain\":[\"$A\",\"$C\"]}"
+[ "$(code -X POST "${J[@]}" -d "$PAIR" "$B/api/chains/plan")" = 200 ] || fail "chain plan"
+[ "$(code -X POST "${J[@]}" -d "$ONE" "$B/api/chains/plan")" = 400 ] || fail "one server is not a chain"
+[ "$(code -X POST "${J[@]}" -d "$NAMED" "$B/api/nodes")" = 200 ] || fail "create chain"
+curl -s -H "X-XF-Token: $TOKEN" "$B/api/nodes" | grep -q '"chain":true' || fail "the chain is listed"
+OVPN='client\ndev tun\nremote v.example 1194\nremote-cert-tls server\n<ca>\nCA\n</ca>\n<cert>\nC\n</cert>\n<key>\nK\n</key>\n'
+curl -s -X POST "${J[@]}" -d "{\"text\":\"$OVPN\"}" "$B/api/import/preview" | grep -q '"protocol":"OpenVPN"' || fail "an .ovpn is recognised"
 kill -TERM $PID; wait $PID || true
 [ ! -e "$DIR/api-token" ] || fail "token file not removed on exit"
 echo "smoke OK"

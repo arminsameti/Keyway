@@ -26,6 +26,7 @@ const (
 	ShadowTLS   = "shadowtls"
 	Naive       = "naive"
 	SSH         = "ssh"
+	OpenVPN     = "openvpn"
 )
 
 // Profile is one proxy server. Fields that do not apply to Protocol are empty.
@@ -53,6 +54,55 @@ type Profile struct {
 	SSH       *SSHOpts       `json:"ssh,omitempty"`
 	AnyTLS    *AnyTLSOpts    `json:"anytls,omitempty"`
 	Naive     *NaiveOpts     `json:"naive,omitempty"`
+	OpenVPN   *OpenVPNOpts   `json:"openvpn,omitempty"`
+}
+
+// OpenVPNOpts is an OpenVPN client profile in TLS mode (the static-key mode is
+// deprecated and not supported). Server and Port are the first remote;
+// Username and Password are the auth-user-pass credentials. Certificates and
+// keys are PEM text, never file paths, so a profile is self-contained.
+type OpenVPNOpts struct {
+	Remotes      []OVPNRemote `json:"remotes,omitempty"` // fallbacks tried after the first, in order
+	RemoteRandom bool         `json:"remoteRandom,omitempty"`
+
+	CA              string   `json:"ca,omitempty"`
+	Cert            string   `json:"cert,omitempty"`
+	Key             string   `json:"key,omitempty"`
+	PeerFingerprint []string `json:"peerFingerprint,omitempty"` // server leaf SHA-256, 64 lowercase hex
+	NeedsCredential bool     `json:"needsCredential,omitempty"` // auth-user-pass without stored credentials
+
+	ControlWrap *OVPNControlWrap `json:"controlWrap,omitempty"`
+
+	DataCiphers    []string `json:"dataCiphers,omitempty"`
+	Cipher         string   `json:"cipher,omitempty"` // "cipher" directive: fallback for old peers
+	Auth           string   `json:"auth,omitempty"`
+	Compression    string   `json:"compression,omitempty"`    // compress <alg>
+	CompLZO        string   `json:"compLzo,omitempty"`        // comp-lzo <mode>
+	RemoteCertTLS  string   `json:"remoteCertTls,omitempty"`  // server (default) | client | none
+	VerifyName     string   `json:"verifyName,omitempty"`     // verify-x509-name
+	VerifyNameType string   `json:"verifyNameType,omitempty"` // name | name-prefix | subject
+	TLSVersionMin  string   `json:"tlsVersionMin,omitempty"`
+	RenegSec       *int     `json:"renegSec,omitempty"` // 0 disables time-based renegotiation
+	PingInterval   int      `json:"pingInterval,omitempty"`
+	PingRestart    int      `json:"pingRestart,omitempty"`
+	MSSFix         int      `json:"mssfix,omitempty"`
+	Fragment       int      `json:"fragment,omitempty"`
+	RouteNoPull    bool     `json:"routeNoPull,omitempty"`
+	Topology       string   `json:"topology,omitempty"`
+}
+
+// OVPNRemote is one OpenVPN server.
+type OVPNRemote struct {
+	Server  string `json:"server"`
+	Port    int    `json:"port"`
+	Network string `json:"network,omitempty"` // udp | tcp; the profile's transport when empty
+}
+
+// OVPNControlWrap is tls-auth, tls-crypt or tls-crypt-v2.
+type OVPNControlWrap struct {
+	Type      string `json:"type"`                // tls_auth | tls_crypt | tls_crypt_v2
+	Key       string `json:"key"`                 // PEM-like key text
+	Direction string `json:"direction,omitempty"` // tls_auth only: server | client
 }
 
 // HysteriaOpts covers both Hysteria versions. Password is the auth string.
@@ -143,8 +193,55 @@ func (p Profile) UDPBased() bool {
 	switch p.Protocol {
 	case Hysteria2, Hysteria, TUIC, WireGuard:
 		return true
+	case OpenVPN:
+		return p.Transport.Type != "tcp"
 	}
 	return false
+}
+
+func (p Profile) validateOpenVPN() error {
+	o := p.OpenVPN
+	if o == nil {
+		return fmt.Errorf("OpenVPN: missing settings")
+	}
+	if strings.TrimSpace(o.CA) == "" && len(o.PeerFingerprint) == 0 {
+		return fmt.Errorf("OpenVPN: missing CA certificate")
+	}
+	if (strings.TrimSpace(o.Cert) == "") != (strings.TrimSpace(o.Key) == "") {
+		return fmt.Errorf("OpenVPN: the client certificate and its key must be given together")
+	}
+	hasCert := strings.TrimSpace(o.Cert) != ""
+	if !hasCert && p.Username == "" {
+		return fmt.Errorf("OpenVPN: needs a client certificate or a username and password")
+	}
+	if o.NeedsCredential && p.Username == "" {
+		return fmt.Errorf("OpenVPN: this profile needs a username and password")
+	}
+	if (p.Username == "") != (p.Password == "") && o.NeedsCredential {
+		return fmt.Errorf("OpenVPN: username and password must be given together")
+	}
+	for _, r := range o.Remotes {
+		if strings.TrimSpace(r.Server) == "" || r.Port < 1 || r.Port > 65535 {
+			return fmt.Errorf("OpenVPN: invalid fallback server")
+		}
+		if r.Network != "" && r.Network != "udp" && r.Network != "tcp" {
+			return fmt.Errorf("OpenVPN: unsupported protocol %q", r.Network)
+		}
+	}
+	if w := o.ControlWrap; w != nil {
+		switch w.Type {
+		case "tls_auth", "tls_crypt", "tls_crypt_v2":
+		default:
+			return fmt.Errorf("OpenVPN: unsupported control channel wrapping %q", w.Type)
+		}
+		if strings.TrimSpace(w.Key) == "" {
+			return fmt.Errorf("OpenVPN: missing control channel key")
+		}
+	}
+	if t := p.Transport.Type; t != "" && t != "udp" && t != "tcp" {
+		return fmt.Errorf("OpenVPN: transport must be udp or tcp")
+	}
+	return nil
 }
 
 // Validate checks the fields every engine relies on. Error messages never
@@ -207,6 +304,10 @@ func (p Profile) Validate() error {
 		}
 		if p.Password == "" && (p.SSH == nil || (p.SSH.PrivateKeyPath == "" && p.SSH.PrivateKey == "")) {
 			return fmt.Errorf("ssh: set a password or a private key")
+		}
+	case OpenVPN:
+		if err := p.validateOpenVPN(); err != nil {
+			return err
 		}
 	case SOCKS, HTTP:
 	default:

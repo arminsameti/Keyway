@@ -44,16 +44,22 @@ func (s *SingBox) Supports(p profile.Profile) error {
 // RuleSets lists the rule-set files the routing settings need.
 func (*SingBox) RuleSets(st models.Settings) []string { return singbox.RequiredRuleSets(st) }
 
-func (s *SingBox) Config(p profile.Profile, st models.Settings) ([]byte, error) {
-	cfg, err := singbox.BuildConfig(p, st, s.RuleSetPath)
+func (s *SingBox) SupportsSegment(hops []profile.Profile, _ bool) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return singbox.SupportsSegment(hops, s.tags)
+}
+
+func (s *SingBox) Config(seg profile.Segment, st models.Settings) ([]byte, error) {
+	cfg, err := singbox.BuildConfig(seg, st, s.RuleSetPath)
 	if err != nil {
 		return nil, err
 	}
 	return json.MarshalIndent(cfg, "", "  ")
 }
 
-func (*SingBox) ProbeConfig(p profile.Profile, port int) ([]byte, error) {
-	cfg, err := singbox.ProbeConfig(p, port)
+func (*SingBox) ProbeConfig(seg profile.Segment, port int) ([]byte, error) {
+	cfg, err := singbox.ProbeConfig(seg, port)
 	if err != nil {
 		return nil, err
 	}

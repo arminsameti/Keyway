@@ -58,7 +58,16 @@ type Runner struct {
 	pidFile    string
 	onExit     func(unexpected bool, err error)
 	logs       *logRing
+	prefix     string // prepended to this runner's log lines (chain segments)
 }
+
+// NewSegmentRunner creates a runner for a further process of a multi-process
+// chain. It writes to parent's log, each line prefixed with label.
+func NewSegmentRunner(pidFile string, parent *Runner, label string) *Runner {
+	return &Runner{pidFile: pidFile, logs: parent.logs, prefix: "[" + label + "] "}
+}
+
+func (r *Runner) emit(s string) { r.logs.add(r.prefix + s) }
 
 // NewRunner creates a runner. pidFile (optional) records the child's PID so a
 // stale process from a crashed previous run can be reaped (see ReapStale).
@@ -84,7 +93,7 @@ func (r *Runner) Start(opts StartOptions) error {
 	cmd := exec.Command(opts.Binary, opts.Args...)
 	cmd.Env = append(os.Environ(), opts.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true} // survive terminal Ctrl-C; we stop it ourselves
-	w := &lineWriter{emit: r.logs.add}
+	w := &lineWriter{emit: r.emit}
 	cmd.Stdout, cmd.Stderr = w, w
 	if err := cmd.Start(); err != nil {
 		r.mu.Unlock()
@@ -93,7 +102,7 @@ func (r *Runner) Start(opts StartOptions) error {
 	p := &process{cmd: cmd, done: make(chan struct{}), started: time.Now()}
 	r.cur = p
 	r.writePID(cmd.Process.Pid)
-	r.logs.add(fmt.Sprintf("started %s (pid %d)", opts.Binary, cmd.Process.Pid))
+	r.emit(fmt.Sprintf("started %s (pid %d)", opts.Binary, cmd.Process.Pid))
 	r.mu.Unlock()
 
 	go r.wait(p)
@@ -124,7 +133,7 @@ func (r *Runner) wait(p *process) {
 	cb := r.onExit
 	r.mu.Unlock()
 
-	r.logs.add("exited: " + describeExit(err, unexpected))
+	r.emit("exited: " + describeExit(err, unexpected))
 	close(p.done)
 	if cb != nil {
 		cb(unexpected, err)

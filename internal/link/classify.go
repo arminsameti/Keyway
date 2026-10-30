@@ -30,6 +30,7 @@ const (
 	FormatSingBox   = "sing-box"
 	FormatClash     = "clash"
 	FormatWireGuard = "wireguard"
+	FormatOVPN      = "openvpn"
 	FormatLinks     = "links"
 	FormatBase64    = "base64"
 )
@@ -43,6 +44,8 @@ func DetectFormat(text string) string {
 		return FormatClash
 	case LooksLikeWireGuardConf(text):
 		return FormatWireGuard
+	case LooksLikeOVPN(text):
+		return FormatOVPN
 	case strings.Contains(text, "://"):
 		return FormatLinks
 	}
@@ -71,6 +74,15 @@ func Classify(text string) []Item {
 	case FormatWireGuard:
 		it := Item{Line: 1, Scheme: "wireguard", Label: "WireGuard config"}
 		res, err := ParseWireGuardConf(text, "")
+		if err != nil {
+			it.Kind, it.Reason = KindSkipped, capitalize(err.Error())
+		} else {
+			it.Kind, it.Result = KindReady, res
+		}
+		items = []Item{it}
+	case FormatOVPN:
+		it := Item{Line: 1, Scheme: "openvpn", Label: "OpenVPN profile"}
+		res, err := ParseOVPN(text, "")
 		if err != nil {
 			it.Kind, it.Reason = KindSkipped, capitalize(err.Error())
 		} else {
