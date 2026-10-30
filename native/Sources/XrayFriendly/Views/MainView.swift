@@ -330,7 +330,7 @@ struct ServerTable: View {
                 ContentUnavailableView {
                     Label("No servers yet", systemImage: "globe")
                 } description: {
-                    Text("Paste a share link, a subscription URL or a config file.")
+                    Text("Paste a share link, a subscription URL, a WireGuard .conf, or a Clash or sing-box config.")
                 } actions: {
                     Button("Add Servers…") { model.openImport() }.buttonStyle(.borderedProminent)
                 }

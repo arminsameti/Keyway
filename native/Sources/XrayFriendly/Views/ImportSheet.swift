@@ -92,7 +92,7 @@ struct ImportSheet: View {
 
     private var intro: String {
         switch method {
-        case .paste: return "Paste share links, one per line. An https:// link is added as a subscription that refreshes on its own."
+        case .paste: return "Paste share links, one per line, or a whole WireGuard .conf. An https:// link is added as a subscription that refreshes on its own."
         case .subscription: return "Your provider's subscription URL. Its server list is fetched now and refreshed on its own."
         case .file: return "A WireGuard .conf, Clash YAML, sing-box JSON or text file, or a screenshot of a QR code."
         }

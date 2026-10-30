@@ -16,6 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { Snapshots.renderAll(to: CommandLine.arguments[i + 1]) }
             exit(0)
         }
+        // New Server and Onboarding are separate windows; macOS would otherwise
+        // open them as tabs of the main window (e.g. while it is full screen).
+        NSWindow.allowsAutomaticWindowTabbing = false
         Activation.install()
     }
 
