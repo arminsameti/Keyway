@@ -38,7 +38,12 @@ final class AppModel {
 
     // UI state
     var sidebar: SidebarItem = .servers
-    var selectedNodeID: Node.ID?
+    var selectedNodeIDs: Set<Node.ID> = []
+    /// The one selected server, or nil when none or several are selected.
+    var selectedNodeID: Node.ID? {
+        get { selectedNodeIDs.count == 1 ? selectedNodeIDs.first : nil }
+        set { selectedNodeIDs = newValue.map { [$0] } ?? [] }
+    }
     var protocolFilter = "All"
     var search = ""
     var showImport = false
@@ -133,7 +138,9 @@ final class AppModel {
             engines = st.engines
             activeNodeId = st.activeNodeId
             sysProxyServices = st.systemProxyServices
-            if selectedNodeID == nil || !nodes.contains(where: { $0.id == selectedNodeID }) {
+            let present = Set(nodes.map(\.id))
+            if !selectedNodeIDs.isSubset(of: present) { selectedNodeIDs.formIntersection(present) }
+            if selectedNodeIDs.isEmpty {
                 selectedNodeID = nodes.first { $0.id == activeNodeId }?.id ?? nodes.first?.id
             }
         }
