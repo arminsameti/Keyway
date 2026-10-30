@@ -262,11 +262,12 @@ struct ServerTable: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @State private var sortOrder = [KeyPathComparator(\Node.latencySort)]
+    @State private var pendingDelete: [Node.ID] = []
 
     var body: some View {
         @Bindable var model = model
         let groups = model.groups(sortedBy: sortOrder)
-        Table(of: Node.self, selection: $model.selectedNodeID, sortOrder: $sortOrder) {
+        Table(of: Node.self, selection: $model.selectedNodeIDs, sortOrder: $sortOrder) {
             TableColumn("") { n in
                 Circle().fill(isActive(n) ? Palette.green : .clear).frame(width: 8, height: 8)
                     .accessibilityLabel("Connected")
@@ -325,7 +326,9 @@ struct ServerTable: View {
             }
         }
         .contextMenu(forSelectionType: Node.ID.self) { ids in
-            if let id = ids.first, let n = model.nodes.first(where: { $0.id == id }) {
+            if ids.count > 1 {
+                Button("Delete \(ids.count) Servers…", role: .destructive) { pendingDelete = Array(ids) }
+            } else if let id = ids.first, let n = model.nodes.first(where: { $0.id == id }) {
                 Button("Connect") { model.connect(id) }
                 Button("Test") { model.testLatency() }
                 Divider()
@@ -333,10 +336,23 @@ struct ServerTable: View {
                 Button("Show QR") { model.qrNode = n }.disabled(!n.hasLink)
                 Button(n.isChain ? "Edit Chain…" : "Edit…") { openWindow(id: "server", value: EditorTarget.edit(id)) }
                 Divider()
-                Button("Delete", role: .destructive) { model.delete(Array(ids)) }
+                Button("Delete", role: .destructive) { model.delete([id]) }
             }
         } primaryAction: { ids in
-            if let id = ids.first { model.connect(id) } // double-click / Return
+            if ids.count == 1, let id = ids.first { model.connect(id) } // double-click / Return
+        }
+        .onDeleteCommand {
+            let ids = Array(model.selectedNodeIDs)
+            if ids.count == 1 { model.delete(ids) } else if ids.count > 1 { pendingDelete = ids }
+        }
+        .confirmationDialog("Delete \(pendingDelete.count) servers?", isPresented: Binding(
+            get: { !pendingDelete.isEmpty }, set: { if !$0 { pendingDelete = [] } }), titleVisibility: .visible) {
+            Button("Delete \(pendingDelete.count) Servers", role: .destructive) {
+                model.delete(pendingDelete)
+                pendingDelete = []
+            }
+        } message: {
+            Text("This removes them from your list. Chains that use them will stop working.")
         }
         .overlay {
             if model.nodes.isEmpty {
