@@ -8,7 +8,7 @@ import (
 var protocolNames = map[string]string{
 	VLESS: "VLESS", VMess: "VMess", Trojan: "Trojan", Shadowsocks: "Shadowsocks", SOCKS: "SOCKS",
 	HTTP: "HTTP", Hysteria2: "Hysteria2", WireGuard: "WireGuard", TUIC: "TUIC", Hysteria: "Hysteria",
-	AnyTLS: "AnyTLS", ShadowTLS: "ShadowTLS", Naive: "NaiveProxy", SSH: "SSH", OpenVPN: "OpenVPN", Chain: "Chain",
+	AnyTLS: "AnyTLS", ShadowTLS: "ShadowTLS", Naive: "NaiveProxy", SSH: "SSH", OpenVPN: "OpenVPN", Chain: "Chain", Custom: "Custom",
 }
 
 var transportNames = map[string]string{
@@ -27,6 +27,9 @@ func ProtocolName(protocol string) string {
 // DisplayTransport is the "Transport" column: the stream layer, except that a
 // plain-TCP Reality server shows "Reality", which is what users recognise.
 func (p Profile) DisplayTransport() string {
+	if p.Protocol == Custom {
+		return "Custom"
+	}
 	t := p.Transport.Type
 	if p.Protocol == Naive && t == "" {
 		t = "h2"
@@ -58,6 +61,8 @@ func (p Profile) DisplayTransport() string {
 // DisplaySecurity is the inspector's "Security" row.
 func (p Profile) DisplaySecurity() string {
 	switch p.Protocol {
+	case Custom:
+		return "—"
 	case Shadowsocks:
 		if strings.HasPrefix(p.Cipher, "2022-blake3-") {
 			return "2022-blake3"

@@ -444,3 +444,37 @@ func TestChainEndpoints(t *testing.T) {
 		t.Fatalf("unknown hop -> %d", w.Code)
 	}
 }
+
+func TestRoutingEndpoints(t *testing.T) {
+	h := newServer(t)
+	m := decodeBody(t, do(h, "POST", "/api/routing/import", map[string]string{"text": "DOMAIN-SUFFIX,example.com,DIRECT\nDOMAIN-KEYWORD,ads,REJECT\nFOO,bar,DIRECT"}))
+	rules, _ := m["rules"].([]any)
+	if m["ok"] != true || len(rules) != 2 || len(m["skipped"].([]any)) != 1 {
+		t.Fatalf("import: %v", m)
+	}
+	if w := do(h, "POST", "/api/routing/import", map[string]string{"text": "nonsense"}); w.Code != http.StatusBadRequest {
+		t.Errorf("unusable import -> %d", w.Code)
+	}
+	body := map[string]any{"host": "www.example.com", "port": 443, "rules": []map[string]any{
+		{"id": "a", "enabled": true, "outbound": "direct", "entries": []string{"domain:example.com"}}}}
+	got := decodeBody(t, do(h, "POST", "/api/routing/test", body))["match"].(map[string]any)
+	if got["outbound"] != "direct" || got["ruleId"] != "a" {
+		t.Errorf("test: %v", got)
+	}
+	if w := do(h, "POST", "/api/routing/test", map[string]any{"host": " "}); w.Code != http.StatusBadRequest {
+		t.Errorf("empty host -> %d", w.Code)
+	}
+}
+
+func TestNodeConfigPreview(t *testing.T) {
+	h := newServer(t)
+	n := decodeBody(t, do(h, "POST", "/api/nodes", map[string]string{"link": "trojan://p@b.example.net:443#B"}))["node"].(map[string]any)
+	m := decodeBody(t, do(h, "GET", "/api/nodes/"+n["id"].(string)+"/config", nil))
+	cfgs, _ := m["configs"].([]any)
+	if m["ok"] != true || len(cfgs) != 1 || !strings.Contains(cfgs[0].(string), `"b.example.net"`) {
+		t.Fatalf("preview: %v", m)
+	}
+	if w := do(h, "GET", "/api/nodes/nope/config", nil); w.Code == http.StatusOK {
+		t.Error("an unknown node has no config")
+	}
+}

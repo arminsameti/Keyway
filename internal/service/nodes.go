@@ -82,6 +82,8 @@ type NodeInput struct {
 	Link    string           `json:"link,omitempty"`
 	Profile *profile.Profile `json:"profile,omitempty"`
 	Chain   []string         `json:"chain,omitempty"` // hop node IDs, entry first: a chain of other servers
+
+	Overrides *profile.Overrides `json:"overrides,omitempty"` // per-server tweaks; nil clears them
 }
 
 func (in NodeInput) build() (link.Result, error) {
@@ -119,6 +121,10 @@ func (s *Service) CreateNode(in NodeInput) (NodeView, error) {
 	if err != nil {
 		return NodeView{}, err
 	}
+	if err := checkOverrides(res.Node, in.Overrides); err != nil {
+		return NodeView{}, err
+	}
+	res.Node.Overrides = keepOverrides(in.Overrides)
 	d, err := s.store.Update(func(d *models.AppData) error {
 		if _, dup := d.FindNode(res.Node.ID); dup {
 			return ErrDuplicateNode
@@ -133,6 +139,38 @@ func (s *Service) CreateNode(in NodeInput) (NodeView, error) {
 	return s.nodeView(d, res.Node), nil
 }
 
+// checkOverrides refuses overrides that cannot work for this server.
+func checkOverrides(n models.Node, o *profile.Overrides) error {
+	if o.IsZero() {
+		return nil
+	}
+	p, err := link.NodeProfile(n.RawLink, n.Profile)
+	if err != nil {
+		return &models.ValidationError{Msg: err.Error()}
+	}
+	if _, err := o.Apply(p); err != nil {
+		return &models.ValidationError{Msg: err.Error()}
+	}
+	return nil
+}
+
+// keepOverrides stores nothing when the overrides change nothing.
+func keepOverrides(o *profile.Overrides) *profile.Overrides {
+	if o.IsZero() {
+		return nil
+	}
+	c := *o
+	if o.Mux != nil {
+		m := *o.Mux
+		c.Mux = &m
+	}
+	if o.Fragment != nil {
+		f := *o.Fragment
+		c.Fragment = &f
+	}
+	return &c
+}
+
 // UpdateNode replaces a node's server details, keeping its ID, source and
 // position, so the active selection and the subscription grouping survive.
 func (s *Service) UpdateNode(id string, in NodeInput) (NodeView, error) {
@@ -141,6 +179,9 @@ func (s *Service) UpdateNode(id string, in NodeInput) (NodeView, error) {
 	}
 	res, err := in.build()
 	if err != nil {
+		return NodeView{}, err
+	}
+	if err := checkOverrides(res.Node, in.Overrides); err != nil {
 		return NodeView{}, err
 	}
 	var out models.Node
@@ -155,6 +196,7 @@ func (s *Service) UpdateNode(id string, in NodeInput) (NodeView, error) {
 			}
 			n.Name, n.Protocol, n.Server, n.Port = res.Node.Name, res.Node.Protocol, res.Node.Server, res.Node.Port
 			n.RawLink, n.Profile = res.Node.RawLink, res.Node.Profile
+			n.Overrides = keepOverrides(in.Overrides)
 			out = *n
 			return nil
 		}

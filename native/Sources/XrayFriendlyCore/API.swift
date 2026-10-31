@@ -72,6 +72,17 @@ public final class APIClient: @unchecked Sendable {
     // MARK: endpoints
 
     public func status() async throws -> Status { try await get("/api/status") }
+    public func importRules(_ text: String) async throws -> ImportedRules { try await post("/api/routing/import", ["text": text]) }
+
+    public func testRoute(host: String, port: Int, rules: [RouteRule]) async throws -> RouteMatch {
+        struct Body: Encodable { var host: String; var port: Int; var rules: [RouteRule] }
+        struct Reply: Decodable { var match: RouteMatch }
+        return try await post("/api/routing/test", Body(host: host, port: port, rules: rules), as: Reply.self).match
+    }
+
+    public func nodeConfig(_ id: String) async throws -> ConfigPreview { try await get("/api/nodes/\(id)/config") }
+
+    public func traffic() async throws -> Traffic { try await get("/api/traffic") }
     public func state() async throws -> AppSnapshot { try await get("/api/state") }
     public func settings() async throws -> AppSettings { try await get("/api/settings") }
     public func engines() async throws -> [EngineInfo] { try await get("/api/engines", as: EnginesBody.self).engines }
@@ -96,15 +107,15 @@ public final class APIClient: @unchecked Sendable {
 
     public func parseLink(_ link: String) async throws -> ProfileBody { try await post("/api/links/parse", ["link": link]) }
     public func nodeProfile(_ id: String) async throws -> ProfileBody { try await get("/api/nodes/\(id)/profile") }
-    public func createNode(name: String, profile: Profile) async throws -> Node {
-        try await post("/api/nodes", NodeInput(name: name, profile: profile), as: NodeBody.self).node
+    public func createNode(name: String, profile: Profile, overrides: ServerOverrides? = nil) async throws -> Node {
+        try await post("/api/nodes", NodeInput(name: name, profile: profile, overrides: overrides?.cleaned), as: NodeBody.self).node
     }
-    public func updateNode(_ id: String, name: String, profile: Profile) async throws -> Node {
-        let data = try await raw("PUT", "/api/nodes/\(id)", body: NodeInput(name: name, profile: profile))
+    public func updateNode(_ id: String, name: String, profile: Profile, overrides: ServerOverrides? = nil) async throws -> Node {
+        let data = try await raw("PUT", "/api/nodes/\(id)", body: NodeInput(name: name, profile: profile, overrides: overrides?.cleaned))
         return try Self.decoder.decode(NodeBody.self, from: data).node
     }
-    public func testServer(name: String, profile: Profile) async throws -> Int {
-        try await post("/api/nodes/test", NodeInput(name: name, profile: profile), as: TestBody.self, timeout: 60).latencyMs
+    public func testServer(name: String, profile: Profile, overrides: ServerOverrides? = nil) async throws -> Int {
+        try await post("/api/nodes/test", NodeInput(name: name, profile: profile, overrides: overrides?.cleaned), as: TestBody.self, timeout: 60).latencyMs
     }
 
     // chains: other servers, entry first
@@ -158,6 +169,7 @@ struct NodeInput: Encodable {
     let name: String
     var profile: Profile?
     var chain: [String]?
+    var overrides: ServerOverrides?
 }
 
 public struct ChainPlan: Decodable, Equatable, Sendable {
@@ -176,6 +188,7 @@ public struct ImportResult: Decodable, Sendable { public let added: Int; public 
 public struct ProfileBody: Decodable, Sendable {
     public let profile: Profile?
     public let chain: [String]?
+    public let overrides: ServerOverrides?
     public let name: String
 }
 public struct LogsBody: Decodable, Sendable { public let logs: [String]; public let next: Int; public let running: Bool }

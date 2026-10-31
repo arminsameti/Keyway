@@ -28,6 +28,7 @@ final class AppModel {
 
     // data from the backend
     private(set) var status = Status()
+    private(set) var traffic = Traffic()
     private(set) var nodes: [Node] = []
     private(set) var subscriptions: [Subscription] = []
     private(set) var settings = AppSettings()
@@ -51,6 +52,7 @@ final class AppModel {
     var showInspector = true
     var focusSearch = false // set by ⌘F; MainView focuses the search field
     var qrNode: Node?
+    var configPreview: ConfigPreview?
     var errorMessage: String?
     var testing = false
     var connecting = false
@@ -82,10 +84,28 @@ final class AppModel {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+        trafficTask = Task { [weak self] in
+            while !Task.isCancelled {
+                if let self { await self.refreshTraffic() }
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
+    private var trafficTask: Task<Void, Never>?
+
+    /// Speeds are only worth fetching while connected.
+    private func refreshTraffic() async {
+        guard let client, status.running else {
+            if traffic != Traffic() { traffic = Traffic() }
+            return
+        }
+        if let t = try? await client.traffic() { traffic = t }
     }
 
     func shutdown() {
         pollTask?.cancel()
+        trafficTask?.cancel()
         backend.stopIfOwned()
     }
 
@@ -261,6 +281,29 @@ final class AppModel {
     func save(_ s: AppSettings) {
         settings = s
         perform { try await $0.saveSettings(s) }
+    }
+
+    func showConfig(of node: Node) {
+        guard let client else { return }
+        Task {
+            do {
+                var p = try await client.nodeConfig(node.id)
+                p.title = node.displayName
+                configPreview = p
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func importRules(_ text: String) async -> ImportedRules? {
+        guard let client else { return nil }
+        do { return try await client.importRules(text) } catch { errorMessage = error.localizedDescription; return nil }
+    }
+
+    func testRoute(host: String, port: Int, rules: [RouteRule]) async -> RouteMatch? {
+        guard let client else { return nil }
+        do { return try await client.testRoute(host: host, port: port, rules: rules) } catch { errorMessage = error.localizedDescription; return nil }
     }
 
     func delete(_ ids: [Node.ID]) { perform { try await $0.delete(ids) } }

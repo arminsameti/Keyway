@@ -35,6 +35,12 @@ type Profile struct {
 	Server   string `json:"server"`
 	Port     int    `json:"port"`
 
+	// Overrides are the per-server tweaks of the node this profile belongs to;
+	// they are stored on the node, never inside the profile.
+	Overrides *Overrides `json:"-"`
+
+	Custom *CustomOpts `json:"custom,omitempty"` // custom: hand-written Xray or sing-box JSON
+
 	UUID       string `json:"uuid,omitempty"`       // vless, vmess, tuic
 	Username   string `json:"username,omitempty"`   // socks, http, naive, ssh
 	Password   string `json:"password,omitempty"`   // trojan, shadowsocks, socks, http, hysteria2, tuic, anytls, shadowtls, naive, ssh
@@ -247,6 +253,9 @@ func (p Profile) validateOpenVPN() error {
 // Validate checks the fields every engine relies on. Error messages never
 // contain credentials.
 func (p Profile) Validate() error {
+	if p.Protocol == Custom {
+		return p.validateCustom()
+	}
 	if strings.TrimSpace(p.Server) == "" {
 		return fmt.Errorf("missing server address")
 	}

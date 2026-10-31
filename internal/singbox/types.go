@@ -3,6 +3,8 @@
 // engine package's job.
 package singbox
 
+import "encoding/json"
+
 // Config is the subset of the sing-box configuration this app generates.
 type Config struct {
 	Log       Log        `json:"log"`
@@ -11,6 +13,18 @@ type Config struct {
 	Outbounds []Outbound `json:"outbounds"`
 	Endpoints []any      `json:"endpoints,omitempty"` // Endpoint (WireGuard) or OpenVPNEndpoint
 	Route     Route      `json:"route"`
+
+	Experimental *Experimental `json:"experimental,omitempty"`
+}
+
+// Experimental carries the Clash-compatible API used to read traffic counters.
+type Experimental struct {
+	ClashAPI *ClashAPI `json:"clash_api,omitempty"`
+}
+
+type ClashAPI struct {
+	ExternalController string `json:"external_controller"`
+	Secret             string `json:"secret,omitempty"`
 }
 
 type Log struct {
@@ -79,6 +93,17 @@ type Outbound struct {
 	TLS       *TLS       `json:"tls,omitempty"`
 	Transport *Transport `json:"transport,omitempty"`
 	Multiplex *Multiplex `json:"multiplex,omitempty"`
+
+	// Raw, when set, is the whole outbound as written by the user (a custom server).
+	Raw json.RawMessage `json:"-"`
+}
+
+func (o Outbound) MarshalJSON() ([]byte, error) {
+	if o.Raw != nil {
+		return o.Raw, nil
+	}
+	type plain Outbound
+	return json.Marshal(plain(o))
 }
 
 type Hy2Obfs struct {
@@ -93,6 +118,7 @@ type TLS struct {
 	ALPN       []string `json:"alpn,omitempty"`
 	UTLS       *UTLS    `json:"utls,omitempty"`
 	Reality    *Reality `json:"reality,omitempty"`
+	Fragment   bool     `json:"fragment,omitempty"` // split the ClientHello (sing-box 1.12+)
 }
 
 type UTLS struct {
@@ -146,6 +172,7 @@ type Route struct {
 	Final                 string    `json:"final"`
 	DefaultDomainResolver string    `json:"default_domain_resolver,omitempty"`
 	AutoDetectInterface   bool      `json:"auto_detect_interface,omitempty"`
+	FindProcess           bool      `json:"find_process,omitempty"` // needed for process_name / process_path rules
 }
 
 // Rule is a route rule; Action defaults to "route" when Outbound is set.
@@ -159,6 +186,10 @@ type Rule struct {
 	DomainRegex   []string `json:"domain_regex,omitempty"`
 	IPCIDR        []string `json:"ip_cidr,omitempty"`
 	IPIsPrivate   bool     `json:"ip_is_private,omitempty"`
+	Port          []int    `json:"port,omitempty"`
+	PortRange     []string `json:"port_range,omitempty"`
+	ProcessName   []string `json:"process_name,omitempty"`
+	ProcessPath   []string `json:"process_path,omitempty"`
 	RuleSet       []string `json:"rule_set,omitempty"`
 }
 

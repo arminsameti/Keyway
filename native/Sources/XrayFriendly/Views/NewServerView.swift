@@ -14,6 +14,9 @@ struct NewServerView: View {
 
     @State private var form = ServerForm(protocolID: "vless")
     @State private var forms: [String: ServerForm] = [:] // keep what was typed per protocol
+    @State private var overrides = ServerOverrides()
+    @State private var customMode = false
+    @State private var custom = CustomForm()
     @State private var chainMode = false
     @State private var chain = ChainForm()
     @State private var chainPlan: ChainPlan?
@@ -33,6 +36,8 @@ struct NewServerView: View {
                 header.padding(.horizontal, 22).padding(.top, 18)
                 if chainMode {
                     ChainEditor(chain: $chain, plan: chainPlan, problem: chainProblem, planning: planning)
+                } else if customMode {
+                    CustomConfigEditor(form: $custom)
                 } else {
                     Form {
                         ForEach(form.sections) { section in
@@ -46,6 +51,9 @@ struct NewServerView: View {
                                 }
                             }
                         }
+                        if form.protocolID != "wireguard" && form.protocolID != "openvpn" {
+                            ServerOverridesSection(overrides: $overrides)
+                        }
                     }
                     .formStyle(.grouped)
                     .scrollContentBackground(.hidden)
@@ -57,7 +65,7 @@ struct NewServerView: View {
         .tint(Palette.accent)
         .navigationTitle(editingID == nil ? "New Server" : "Edit Server")
         .onPasteCommand(of: [.plainText]) { providers in
-            guard !chainMode else { return }
+            guard !chainMode, !customMode else { return }
             _ = providers.first?.loadObject(ofClass: NSString.self) { s, _ in
                 if let s = s as? String { Task { @MainActor in await fill(from: s) } }
             }
@@ -73,8 +81,10 @@ struct NewServerView: View {
     // MARK: layout
 
     private var protocolList: some View {
-        List(selection: Binding(get: { chainMode ? "chain" : form.protocolID }, set: { id in
-            if id == "chain" { chainMode = true } else { chainMode = false; switchProtocol(id) }
+        List(selection: Binding(get: { chainMode ? "chain" : customMode ? "custom" : form.protocolID }, set: { id in
+            chainMode = id == "chain"
+            customMode = id == "custom"
+            if !chainMode && !customMode { switchProtocol(id) }
         })) {
             Section("Combine") {
                 VStack(alignment: .leading, spacing: 1) {
@@ -84,6 +94,13 @@ struct NewServerView: View {
                 .padding(.vertical, 2)
                 .tag("chain")
                 .accessibilityLabel("Proxy Chain, several servers in a row")
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Custom Config").font(.system(size: 13, weight: .semibold)).foregroundStyle(.primary)
+                    Text("Your own Xray or sing-box JSON").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
+                .tag("custom")
+                .accessibilityLabel("Custom Config, your own Xray or sing-box JSON")
             }
             ForEach([("xray", "Xray core"), ("sing-box", "sing-box")], id: \.0) { engine, title in
                 Section(title) {
@@ -106,13 +123,14 @@ struct NewServerView: View {
     }
 
     private var header: some View {
-        let title = chainMode ? "Proxy Chain" : form.def.label
+        let title = chainMode ? "Proxy Chain" : customMode ? "Custom Config" : form.def.label
         let about = chainMode
             ? "Route through several servers in a row, such as OpenVPN, then Xray, then WireGuard. Each server only knows its neighbours."
+            : customMode ? "Paste an outbound written for Xray or sing-box. The app adds its own ports, routing rules and traffic counters around it."
             : form.def.about
-        let engine = chainMode ? (chainPlan?.engine ?? "xray") : form.engine
+        let engine = chainMode ? (chainPlan?.engine ?? "xray") : customMode ? custom.engine : form.engine
         let badge = Palette.engineBadge(engine)
-        let badgeText: String? = chainMode ? chainPlan.map { "Runs on \($0.engineName)" } : "Runs on \(model.engineBadge(form.engine))"
+        let badgeText: String? = chainMode ? chainPlan.map { "Runs on \($0.engineName)" } : "Runs on \(model.engineBadge(customMode ? custom.engine : form.engine))"
         return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.system(size: 17, weight: .bold))
@@ -133,13 +151,13 @@ struct NewServerView: View {
             Divider()
             HStack(spacing: 8) {
                 Button("Test Connection") { test() }.disabled(busy)
-                Text(status ?? (chainMode ? "Test Connection checks every hop end to end" : "Paste a link or a config file anywhere in this window to fill the form"))
+                Text(status ?? (chainMode ? "Test Connection checks every hop end to end" : customMode ? "Test Connection runs your outbound and fetches a page through it" : "Paste a link or a config file anywhere in this window to fill the form"))
                     .font(.system(size: 12))
                     .foregroundStyle(statusIsError ? Palette.error : (status == nil ? Palette.secondary : Palette.greenText))
                     .lineLimit(2)
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(editingID == nil ? (chainMode ? "Add Chain" : "Add Server") : "Save") { save() }
+                Button(editingID == nil ? (chainMode ? "Add Chain" : customMode ? "Add Custom Server" : "Add Server") : "Save") { save() }
                     .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(busy)
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
@@ -210,8 +228,12 @@ struct NewServerView: View {
             if let hops = body.chain {
                 chainMode = true
                 chain = ChainForm(name: body.name, hops: hops)
+            } else if let p = body.profile, p.protocol == "custom" {
+                customMode = true
+                custom = CustomForm(profile: p, name: body.name)
             } else if let p = body.profile {
                 form = ServerForm(profile: p, name: body.name)
+                overrides = body.overrides ?? ServerOverrides()
             }
         } catch {
             show(error.localizedDescription, error: true)
@@ -270,13 +292,13 @@ struct NewServerView: View {
             return
         }
         do {
-            let (name, profile) = try form.profile()
+            let (name, profile) = try customMode ? custom.profile() : form.profile()
             busy = true
-            show("Testing through \(model.engineBadge(form.engine))…", error: false)
+            show("Testing through \(model.engineBadge(customMode ? custom.engine : form.engine))…", error: false)
             Task {
                 defer { busy = false }
                 do {
-                    let ms = try await client.testServer(name: name, profile: profile)
+                    let ms = try await client.testServer(name: name, profile: profile, overrides: overrides)
                     show("Works · \(Format.latencyLong(ms))", error: false)
                 } catch {
                     show(error.localizedDescription, error: true)
@@ -311,16 +333,16 @@ struct NewServerView: View {
             return
         }
         do {
-            let (name, profile) = try form.profile()
+            let (name, profile) = try customMode ? custom.profile() : form.profile()
             busy = true
             Task {
                 defer { busy = false }
                 do {
                     let node: Node
                     if let id = editingID {
-                        node = try await client.updateNode(id, name: name, profile: profile)
+                        node = try await client.updateNode(id, name: name, profile: profile, overrides: overrides)
                     } else {
-                        node = try await client.createNode(name: name, profile: profile)
+                        node = try await client.createNode(name: name, profile: profile, overrides: overrides)
                     }
                     await model.refreshState()
                     model.selectedNodeID = node.id

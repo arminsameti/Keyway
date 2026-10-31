@@ -82,6 +82,17 @@ public enum Format {
         return parts.joined(separator: " · ")
     }
 
+    /// "1.2 MB", "340 KB", "12 B".
+    public static func bytes(_ n: Int64) -> String {
+        let units = ["B", "KB", "MB", "GB", "TB"]
+        var v = Double(max(0, n)), i = 0
+        while v >= 1000, i < units.count - 1 { v /= 1000; i += 1 }
+        return i == 0 ? "\(Int(v)) B" : String(format: v < 10 ? "%.1f %@" : "%.0f %@", v, units[i])
+    }
+
+    /// "1.2 MB/s".
+    public static func rate(_ bps: Int64) -> String { bytes(bps) + "/s" }
+
     /// "00:14:32".
     public static func uptime(_ seconds: Int) -> String {
         let s = max(0, seconds)
@@ -111,6 +122,7 @@ public enum Format {
         switch mode {
         case "global": return "Everything through the proxy"
         case "custom": return "Custom routing rules"
+        case "rules": return "Your rule set"
         default: return "Bypassing private & local sites"
         }
     }

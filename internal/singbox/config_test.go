@@ -119,7 +119,14 @@ func TestInboundsAndRouting(t *testing.T) {
 		`{"type":"http","tag":"http-in","listen":"127.0.0.1","listen_port":10809}`)
 	want(t, "rules", got, `{"action":"sniff"}`,
 		`{"action":"reject","rule_set":["geosite-category-ads-all"]}`,
-		`"outbound":"direct","domain":["a.com"],"domain_suffix":["example.org"],"domain_keyword":["bank","plainword"],"domain_regex":["^x$"],"ip_cidr":["10.0.0.0/8","1.2.3.4/32"],"ip_is_private":true,"rule_set":["geosite-private","geosite-ir"]`,
+		// one rule per kind of matcher: sing-box ANDs matchers inside a rule
+		`{"outbound":"direct","ip_is_private":true}`,
+		`{"outbound":"direct","rule_set":["geosite-private","geosite-ir"]}`,
+		`{"outbound":"direct","domain_suffix":["example.org"]}`,
+		`{"outbound":"direct","domain":["a.com"]}`,
+		`{"outbound":"direct","domain_keyword":["bank","plainword"]}`,
+		`{"outbound":"direct","domain_regex":["^x$"]}`,
+		`{"outbound":"direct","ip_cidr":["10.0.0.0/8","1.2.3.4/32"]}`,
 		`{"type":"local","tag":"geosite-ir","format":"binary","path":"/rules/geosite-ir.srs"}`)
 	if strings.Contains(got, `"action":"resolve"`) {
 		t.Error("no forced resolve: it would leak DNS for proxied domains")
@@ -339,5 +346,71 @@ func wantDetours(t *testing.T, name string, cfg *Config, wantDetour map[string]s
 		if ty[tag] != w {
 			t.Errorf("%s: %s is a %q, want %q", name, tag, ty[tag], w)
 		}
+	}
+}
+
+func TestStatsAPIIsLoopbackWithSecret(t *testing.T) {
+	p := profile.Profile{Protocol: profile.Shadowsocks, Server: "a.example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pw"}
+	cfg, err := BuildConfig(profile.Segment{Hops: []profile.Profile{p}, Stats: &profile.StatsAPI{Port: 4999, Secret: "sek"}}, models.DefaultSettings(), func(n string) string { return n })
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := cfg.Experimental.ClashAPI
+	if c.ExternalController != "127.0.0.1:4999" || c.Secret != "sek" {
+		t.Errorf("clash api = %+v", c)
+	}
+}
+
+func ruleSetOf(rules ...models.RouteRule) func(*models.Settings) {
+	return func(s *models.Settings) {
+		s.RoutingMode, s.BlockAds, s.Sniffing = "rules", false, false
+		s.RuleSets = []models.RuleSet{{ID: "r1", Name: "mine", Rules: rules}}
+		s.ActiveRuleSet = "r1"
+	}
+}
+
+func TestRulesModeKeepsOrderAndSplitsMatchers(t *testing.T) {
+	vless := profile.Profile{Protocol: profile.VLESS, Server: "a.com", Port: 443, UUID: "id", Security: tlsSec}
+	got := build(t, vless, ruleSetOf(
+		models.RouteRule{ID: "a", Enabled: true, Outbound: "block", Entries: []string{"domain:ads.example"}},
+		models.RouteRule{ID: "b", Enabled: true, Outbound: "direct", Entries: []string{"geosite:cn", "port:22,8000-9000", "192.168.0.0/16", "process:Slack"}},
+		models.RouteRule{ID: "c", Enabled: false, Outbound: "direct", Entries: []string{"domain:off.example"}},
+	))
+	want(t, "rules", got,
+		`{"action":"reject","domain_suffix":["ads.example"]}`,
+		`{"outbound":"direct","rule_set":["geosite-cn"]}`,
+		`{"outbound":"direct","ip_cidr":["192.168.0.0/16"]}`,
+		`{"outbound":"direct","port_range":["8000:9000"]}`,
+		`{"outbound":"direct","port":[22]}`,
+		`{"outbound":"direct","process_name":["Slack"]}`,
+		`"find_process":true`)
+	if strings.Contains(got, "off.example") {
+		t.Error("a disabled rule must not be emitted")
+	}
+	if strings.Index(got, "ads.example") > strings.Index(got, "geosite-cn") {
+		t.Error("rules must keep the user's order")
+	}
+}
+
+func TestOverridesMuxAndFragment(t *testing.T) {
+	yes := true
+	p := profile.Profile{Protocol: profile.Trojan, Server: "a.example.com", Port: 443, Password: "p", Security: tlsSec}
+	p.Overrides = &profile.Overrides{Mux: &yes, MuxConcurrency: 3, Fragment: &profile.Fragment{}}
+	got := build(t, p, nil)
+	want(t, "overrides", got, `"multiplex":{"enabled":true,"max_streams":3}`, `"fragment":true`)
+	other := profile.Profile{Protocol: profile.Trojan, Server: "b.example.com", Port: 443, Password: "p", Security: tlsSec}
+	if _, err := BuildConfig(profile.Segment{Hops: []profile.Profile{other, p}}, models.DefaultSettings(), rsPath); err == nil || !strings.Contains(err.Error(), "dialed directly") {
+		t.Errorf("fragment on a later hop: %v", err)
+	}
+}
+
+func TestCustomOutboundsAndEndpoints(t *testing.T) {
+	p := profile.Profile{Protocol: profile.Custom, Custom: &profile.CustomOpts{Engine: "sing-box", Config: `{"outbounds":[
+		{"type":"trojan","tag":"t","server":"t.example.com","server_port":443,"password":"x","detour":"jump"},
+		{"type":"socks","tag":"jump","server":"127.0.0.1","server_port":1080}]}`}}
+	got := build(t, p, nil)
+	want(t, "custom", got, `"tag":"proxy"`, `"server":"t.example.com"`, `"tag":"jump"`, `{"type":"direct","tag":"direct"}`, `"final":"proxy"`)
+	if err := Supports(profile.Profile{Protocol: profile.Custom, Custom: &profile.CustomOpts{Engine: "xray", Config: "{}"}}, nil); err == nil {
+		t.Error("sing-box must refuse Xray JSON")
 	}
 }

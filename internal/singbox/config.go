@@ -1,6 +1,7 @@
 package singbox
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"sort"
@@ -18,6 +19,7 @@ const (
 	TagUTLS      = "with_utls"
 	TagNaive     = "with_naive_outbound"
 	TagOpenVPN   = "with_openvpn"
+	TagClashAPI  = "with_clash_api"
 )
 
 // Supports reports whether sing-box can run the profile. tags are the build
@@ -31,6 +33,11 @@ func Supports(p profile.Profile, tags map[string]bool) error {
 		return nil
 	}
 	switch p.Protocol {
+	case profile.Custom:
+		if p.Custom == nil || p.Custom.Engine != "sing-box" {
+			return fmt.Errorf("this custom config is written for Xray")
+		}
+		return nil
 	case profile.VLESS:
 		if p.Flow != "" && p.Flow != "xtls-rprx-vision" {
 			return fmt.Errorf("VLESS flow %q is not supported by sing-box", p.Flow)
@@ -156,10 +163,10 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 		return cfg, nil
 	}
 	exit := seg.Hops[len(seg.Hops)-1]
-	if s.Mux && muxCapable(exit) {
+	if on, conc := muxFor(s, exit); on && muxCapable(exit) {
 		for i := range cfg.Outbounds {
 			if cfg.Outbounds[i].Tag == "proxy" {
-				cfg.Outbounds[i].Multiplex = &Multiplex{Enabled: true, MaxStreams: s.MuxConcurrency}
+				cfg.Outbounds[i].Multiplex = &Multiplex{Enabled: true, MaxStreams: conc}
 			}
 		}
 	}
@@ -178,7 +185,30 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 		return nil, err
 	}
 	cfg.Route.Rules, cfg.Route.RuleSet = rules, sets
+	for _, r := range rules {
+		if len(r.ProcessName) > 0 || len(r.ProcessPath) > 0 {
+			cfg.Route.FindProcess = true
+		}
+	}
+	if seg.Stats != nil {
+		cfg.Experimental = &Experimental{ClashAPI: &ClashAPI{
+			ExternalController: net.JoinHostPort("127.0.0.1", strconv.Itoa(seg.Stats.Port)), Secret: seg.Stats.Secret}}
+	}
 	return cfg, nil
+}
+
+// muxFor resolves multiplexing for the exit server: its own override, else the global setting.
+func muxFor(s models.Settings, exit profile.Profile) (bool, int) {
+	on, conc := s.Mux, s.MuxConcurrency
+	if o := exit.Overrides; o != nil {
+		if o.Mux != nil {
+			on = *o.Mux
+		}
+		if o.MuxConcurrency > 0 {
+			conc = o.MuxConcurrency
+		}
+	}
+	return on, conc
 }
 
 func bridgeInbound(b profile.Bridge) Inbound {
@@ -222,6 +252,26 @@ func base(seg profile.Segment) (*Config, error) {
 		DNS:   &DNS{Servers: []DNSServer{{Type: "local", Tag: "local"}}, Final: "local"},
 		Route: Route{Final: "proxy", DefaultDomainResolver: "local"},
 	}
+	if n == 1 && seg.Hops[0].Protocol == profile.Custom {
+		if seg.Upstream != nil {
+			return nil, fmt.Errorf("a custom config cannot be dialed through another server")
+		}
+		parts, err := profile.ParseCustom(seg.Hops[0].Custom)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range parts.Outbounds {
+			raw, _ := json.Marshal(m)
+			tag, _ := m["tag"].(string)
+			cfg.Outbounds = append(cfg.Outbounds, Outbound{Tag: tag, Raw: raw})
+		}
+		for _, m := range parts.Endpoints {
+			raw, _ := json.Marshal(m)
+			cfg.Endpoints = append(cfg.Endpoints, json.RawMessage(raw))
+		}
+		cfg.Outbounds = append(cfg.Outbounds, Outbound{Type: "direct", Tag: "direct"})
+		return cfg, nil
+	}
 	detour := ""
 	if seg.Upstream != nil {
 		u := seg.Upstream
@@ -242,6 +292,17 @@ func base(seg profile.Segment) (*Config, error) {
 			obs, err := outbounds(h, tag, detour)
 			if err != nil {
 				return nil, err
+			}
+			if h.Overrides != nil && h.Overrides.Fragment != nil {
+				if detour != "" {
+					return nil, fmt.Errorf("hop %d: fragmentation only works on a server that is dialed directly, not through another server", i+1)
+				}
+				for k := range obs {
+					if obs[k].TLS != nil {
+						obs[k].TLS.Fragment = true
+						break
+					}
+				}
 			}
 			cfg.Outbounds = append(cfg.Outbounds, obs...)
 		}
@@ -422,6 +483,10 @@ func routeLists(s models.Settings) []routeList {
 		lists = append(lists, routeList{"block", blocked})
 	}
 	switch s.RoutingMode {
+	case "rules":
+		for _, r := range s.ActiveRules() {
+			lists = append(lists, routeList{r.Outbound, r.Entries})
+		}
 	case "custom":
 		lists = append(lists, routeList{"proxy", split(s.ProxySites)}, routeList{"direct", split(s.DirectSites)})
 	case "global":
@@ -454,24 +519,11 @@ func buildRules(s models.Settings, ruleSetPath func(string) string) ([]Rule, []R
 	}
 	sets := map[string]bool{}
 	for _, l := range routeLists(s) {
-		if len(l.entries) == 0 {
-			continue
+		rs, err := listRules(l, sets)
+		if err != nil {
+			return nil, nil, err
 		}
-		r := Rule{Outbound: l.target}
-		if l.target == "block" {
-			r = Rule{Action: "reject"}
-		}
-		for _, e := range l.entries {
-			if name, ok := ruleSetName(e); ok {
-				r.RuleSet = append(r.RuleSet, name)
-				sets[name] = true
-				continue
-			}
-			if err := addMatcher(&r, e); err != nil {
-				return nil, nil, err
-			}
-		}
-		rules = append(rules, r)
+		rules = append(rules, rs...)
 	}
 	names := make([]string, 0, len(sets))
 	for n := range sets {
@@ -483,6 +535,82 @@ func buildRules(s models.Settings, ruleSetPath func(string) string) ([]Rule, []R
 		rs = append(rs, RuleSet{Type: "local", Tag: n, Format: "binary", Path: ruleSetPath(n)})
 	}
 	return rules, rs, nil
+}
+
+// listRules turns one list into rules. sing-box ANDs the different kinds of
+// matcher inside one rule (a domain AND an IP range), which is never what a
+// list of alternatives means, so every kind gets a rule of its own; they share
+// the outbound and keep the list's position.
+func listRules(l routeList, sets map[string]bool) ([]Rule, error) {
+	if len(l.entries) == 0 {
+		return nil, nil
+	}
+	var groups []Rule // one per kind, in first-seen order
+	kinds := map[string]int{}
+	group := func(kind string) *Rule {
+		i, ok := kinds[kind]
+		if !ok {
+			i = len(groups)
+			kinds[kind] = i
+			groups = append(groups, Rule{})
+		}
+		return &groups[i]
+	}
+	for _, e := range l.entries {
+		if name, ok := ruleSetName(e); ok {
+			g := group("rule_set")
+			g.RuleSet = append(g.RuleSet, name)
+			sets[name] = true
+			continue
+		}
+		var one Rule
+		if err := addMatcher(&one, e); err != nil {
+			return nil, err
+		}
+		for _, kv := range []struct {
+			kind string
+			vals []string
+		}{{"domain", one.Domain}, {"domain_suffix", one.DomainSuffix}, {"domain_keyword", one.DomainKeyword}, {"domain_regex", one.DomainRegex},
+			{"ip_cidr", one.IPCIDR}, {"port_range", one.PortRange}, {"process_name", one.ProcessName}, {"process_path", one.ProcessPath}} {
+			kind, vals := kv.kind, kv.vals
+			if len(vals) == 0 {
+				continue
+			}
+			g := group(kind)
+			g.Domain = append(g.Domain, pick(kind == "domain", vals)...)
+			g.DomainSuffix = append(g.DomainSuffix, pick(kind == "domain_suffix", vals)...)
+			g.DomainKeyword = append(g.DomainKeyword, pick(kind == "domain_keyword", vals)...)
+			g.DomainRegex = append(g.DomainRegex, pick(kind == "domain_regex", vals)...)
+			g.IPCIDR = append(g.IPCIDR, pick(kind == "ip_cidr", vals)...)
+			g.PortRange = append(g.PortRange, pick(kind == "port_range", vals)...)
+			g.ProcessName = append(g.ProcessName, pick(kind == "process_name", vals)...)
+			g.ProcessPath = append(g.ProcessPath, pick(kind == "process_path", vals)...)
+		}
+		if one.IPIsPrivate {
+			group("ip_is_private").IPIsPrivate = true
+		}
+		if len(one.Port) > 0 {
+			g := group("port")
+			g.Port = append(g.Port, one.Port...)
+		}
+	}
+	out := make([]Rule, 0, len(groups))
+	for _, g := range groups {
+		if l.target == "block" {
+			g.Action = "reject"
+		} else {
+			g.Outbound = l.target
+		}
+		out = append(out, g)
+	}
+	return out, nil
+}
+
+func pick(ok bool, v []string) []string {
+	if ok {
+		return v
+	}
+	return nil
 }
 
 // addMatcher maps one Xray-style routing entry onto a sing-box rule.
@@ -498,6 +626,22 @@ func addMatcher(r *Rule, e string) error {
 		r.DomainKeyword = append(r.DomainKeyword, strings.TrimPrefix(e, "keyword:"))
 	case strings.HasPrefix(e, "regexp:"):
 		r.DomainRegex = append(r.DomainRegex, strings.TrimPrefix(e, "regexp:"))
+	case strings.HasPrefix(e, "port:"):
+		ranges, err := models.PortRanges(strings.TrimPrefix(e, "port:"))
+		if err != nil {
+			return fmt.Errorf("routing entry %q: %w", e, err)
+		}
+		for _, pr := range ranges {
+			if pr[0] == pr[1] {
+				r.Port = append(r.Port, pr[0])
+			} else {
+				r.PortRange = append(r.PortRange, fmt.Sprintf("%d:%d", pr[0], pr[1]))
+			}
+		}
+	case strings.HasPrefix(e, "process-path:"):
+		r.ProcessPath = append(r.ProcessPath, strings.TrimPrefix(e, "process-path:"))
+	case strings.HasPrefix(e, "process:"):
+		r.ProcessName = append(r.ProcessName, strings.TrimPrefix(e, "process:"))
 	case strings.HasPrefix(e, "ext:"):
 		return fmt.Errorf("routing entry %q (ext: files) is not supported by sing-box", e)
 	default:

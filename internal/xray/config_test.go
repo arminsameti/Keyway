@@ -302,3 +302,126 @@ func TestXrayChainsOnlyTCPProtocols(t *testing.T) {
 		t.Error("an empty segment is refused")
 	}
 }
+
+func TestStatsAPIIsLoopbackAndRoutedToTheAPIHandler(t *testing.T) {
+	p := profile.Profile{Protocol: profile.Shadowsocks, Server: "a.example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pw"}
+	cfg, err := BuildConfig(profile.Segment{Hops: []profile.Profile{p}, Stats: &profile.StatsAPI{Port: 4999}}, models.DefaultSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.API == nil || cfg.Stats == nil || cfg.Policy == nil || !cfg.Policy.System.OutboundDownlink {
+		t.Fatalf("stats blocks missing: %+v", cfg)
+	}
+	var found bool
+	for _, in := range cfg.Inbounds {
+		if in.Tag == StatsTag {
+			found = true
+			if in.Listen != "127.0.0.1" || in.Port != 4999 {
+				t.Errorf("stats inbound must be loopback:4999, got %s:%d", in.Listen, in.Port)
+			}
+		}
+	}
+	if !found {
+		t.Error("no stats inbound")
+	}
+	if r := cfg.Routing.Rules[0]; len(r.InboundTag) != 1 || r.InboundTag[0] != StatsTag || r.OutboundTag != "api" {
+		t.Errorf("first rule must send the stats inbound to the api handler, got %+v", r)
+	}
+	// a middle segment never exposes stats
+	mid, _ := BuildConfig(profile.Segment{Hops: []profile.Profile{p}, Listen: &profile.Bridge{Port: 5000, User: "u", Pass: "p"}, Stats: &profile.StatsAPI{Port: 4999}}, models.DefaultSettings())
+	if mid.API != nil {
+		t.Error("middle segment must not carry the stats API")
+	}
+}
+
+func TestRulesModeBuildsOneXrayRulePerEntryKind(t *testing.T) {
+	p := profile.Profile{Protocol: profile.Shadowsocks, Server: "a.example.com", Port: 8388, Cipher: "aes-128-gcm", Password: "pw"}
+	s := models.DefaultSettings()
+	s.RoutingMode, s.BlockAds = "rules", false
+	s.RuleSets = []models.RuleSet{{ID: "r1", Name: "mine", Rules: []models.RouteRule{
+		{ID: "a", Enabled: true, Outbound: "direct", Entries: []string{"geosite:cn", "domain:x.org", "geoip:private", "10.0.0.0/8", "port:80,443"}},
+		{ID: "b", Enabled: true, Outbound: "block", Entries: []string{"keyword:ads"}},
+	}}}
+	s.ActiveRuleSet = "r1"
+	cfg, err := BuildConfig(profile.Single(p), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := mustJSON(t, cfg.Routing.Rules)
+	for _, w := range []string{
+		`{"type":"field","domain":["geosite:cn","domain:x.org"],"outboundTag":"direct"}`,
+		`{"type":"field","ip":["geoip:private","10.0.0.0/8"],"outboundTag":"direct"}`,
+		`{"type":"field","port":"80,443","outboundTag":"direct"}`,
+		`{"type":"field","domain":["keyword:ads"],"outboundTag":"block"}`,
+	} {
+		if !strings.Contains(got, w) {
+			t.Errorf("missing %s in %s", w, got)
+		}
+	}
+	// process matching is sing-box only
+	s.RuleSets[0].Rules[0].Entries = []string{"process:Slack"}
+	if _, err := BuildConfig(profile.Single(p), s); err == nil || !strings.Contains(err.Error(), "sing-box") {
+		t.Errorf("want a hint to use sing-box, got %v", err)
+	}
+}
+
+func TestOverridesMuxAndFragment(t *testing.T) {
+	yes, no := true, false
+	base := profile.Profile{Protocol: profile.Trojan, Server: "a.example.com", Port: 443, Password: "p",
+		Transport: profile.Transport{Type: "tcp"}, Security: profile.Security{Kind: "tls", SNI: "a.example.com"}}
+	s := models.DefaultSettings()
+	s.Mux, s.MuxConcurrency = false, 8
+
+	on := base
+	on.Overrides = &profile.Overrides{Mux: &yes, MuxConcurrency: 4}
+	cfg, err := BuildConfig(profile.Single(on), s)
+	if err != nil || cfg.Outbounds[0].Mux == nil || cfg.Outbounds[0].Mux.Concurrency != 4 {
+		t.Fatalf("mux override on: %+v %v", cfg.Outbounds[0].Mux, err)
+	}
+	s.Mux = true
+	off := base
+	off.Overrides = &profile.Overrides{Mux: &no}
+	if cfg, _ := BuildConfig(profile.Single(off), s); cfg.Outbounds[0].Mux != nil {
+		t.Error("a server can switch multiplexing off against the global setting")
+	}
+
+	frag := base
+	frag.Overrides = &profile.Overrides{Fragment: &profile.Fragment{Length: "50-100"}}
+	cfg, err = BuildConfig(profile.Single(frag), s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := mustJSON(t, cfg.Outbounds)
+	for _, w := range []string{`"dialerProxy":"fragment"`, `"tag":"fragment","protocol":"freedom"`, `"packets":"tlshello"`, `"length":"50-100"`, `"interval":"10-20"`} {
+		if !strings.Contains(got, w) {
+			t.Errorf("missing %s in %s", w, got)
+		}
+	}
+	// fragmentation is for a directly dialed server: not the second hop of a chain
+	if _, err := BuildConfig(profile.Segment{Hops: []profile.Profile{base, frag}}, s); err == nil || !strings.Contains(err.Error(), "dialed directly") {
+		t.Errorf("fragment on a later hop: %v", err)
+	}
+}
+
+func TestCustomOutboundsKeepTheUsersJSONAndOurRouting(t *testing.T) {
+	p := profile.Profile{Protocol: profile.Custom, Custom: &profile.CustomOpts{Engine: "xray", Config: `[
+		{"tag":"front","protocol":"vless","settings":{"vnext":[{"address":"a.example.com","port":443,"users":[{"id":"u","encryption":"none"}]}]},"streamSettings":{"network":"ws","wsSettings":{"path":"/x"}}}]`}}
+	cfg, err := BuildConfig(profile.Segment{Hops: []profile.Profile{p}, Stats: &profile.StatsAPI{Port: 4999}}, models.DefaultSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := mustJSON(t, cfg.Outbounds)
+	for _, w := range []string{`"tag":"proxy"`, `"path":"/x"`, `{"tag":"direct","protocol":"freedom"}`} {
+		if !strings.Contains(got, w) {
+			t.Errorf("missing %s in %s", w, got)
+		}
+	}
+	if len(cfg.Inbounds) < 2 || cfg.Routing.Rules[0].OutboundTag != "api" {
+		t.Error("the app keeps its own inbounds and routing")
+	}
+	other := p
+	other.Custom = &profile.CustomOpts{Engine: "sing-box", Config: p.Custom.Config}
+	if err := Supports(other); err == nil || !strings.Contains(err.Error(), "sing-box") {
+		t.Errorf("an engine must refuse the other engine's JSON: %v", err)
+	}
+}

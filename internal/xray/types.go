@@ -2,6 +2,8 @@
 // builder and the process runner.
 package xray
 
+import "encoding/json"
+
 // Config is the subset of the Xray-core JSON configuration this app generates.
 type Config struct {
 	Log       LogConfig  `json:"log"`
@@ -9,6 +11,24 @@ type Config struct {
 	Inbounds  []Inbound  `json:"inbounds"`
 	Outbounds []Outbound `json:"outbounds"`
 	Routing   Routing    `json:"routing"`
+	Stats     *struct{}  `json:"stats,omitempty"`
+	API       *API       `json:"api,omitempty"`
+	Policy    *Policy    `json:"policy,omitempty"`
+}
+
+// API exposes Xray's gRPC services; only the statistics service is enabled.
+type API struct {
+	Tag      string   `json:"tag"`
+	Services []string `json:"services"`
+}
+
+type Policy struct {
+	System PolicySystem `json:"system"`
+}
+
+type PolicySystem struct {
+	OutboundUplink   bool `json:"statsOutboundUplink"`
+	OutboundDownlink bool `json:"statsOutboundDownlink"`
 }
 
 type LogConfig struct {
@@ -28,6 +48,8 @@ type Rule struct {
 	Type        string   `json:"type"`
 	Domain      []string `json:"domain,omitempty"`
 	IP          []string `json:"ip,omitempty"`
+	Port        string   `json:"port,omitempty"`
+	InboundTag  []string `json:"inboundTag,omitempty"`
 	OutboundTag string   `json:"outboundTag"`
 }
 
@@ -72,6 +94,18 @@ type Outbound struct {
 	Settings       any             `json:"settings,omitempty"`
 	StreamSettings *StreamSettings `json:"streamSettings,omitempty"`
 	Mux            *Mux            `json:"mux,omitempty"`
+
+	// Raw, when set, is the whole outbound as written by the user (a custom
+	// server); the typed fields are then only used for lookups such as Tag.
+	Raw json.RawMessage `json:"-"`
+}
+
+func (o Outbound) MarshalJSON() ([]byte, error) {
+	if o.Raw != nil {
+		return o.Raw, nil
+	}
+	type plain Outbound
+	return json.Marshal(plain(o))
 }
 
 type Mux struct {

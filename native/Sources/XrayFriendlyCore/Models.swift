@@ -48,6 +48,7 @@ public struct Node: Codable, Identifiable, Hashable, Sendable {
     public var chain: Bool?
     public var hops: [HopInfo]?
     public var relaysUdp: Bool?
+    public var overrides: ServerOverrides?
 
     public var isChain: Bool { chain ?? false }
     public var hopList: [HopInfo] { hops ?? [] }
@@ -136,6 +137,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var autoDownloadEngines = true
     public var engineUpdateCheck = "weekly"
     public var latencyMethod = "real"
+    public var ruleSets: [RuleSet] = []
+    public var activeRuleSet = ""
     public init() {}
 
     /// The first enabled inbound of a protocol ("socks", "http").
@@ -257,6 +260,7 @@ public struct Profile: Codable, Equatable, Sendable {
     public var anytls: AnyTLS?
     public var naive: Naive?
     public var openvpn: OpenVPN?
+    public var custom: CustomConfig?
     public init(protocol p: String) { self.protocol = p }
 
     /// An OpenVPN client profile (TLS mode). Certificates and keys are PEM
@@ -370,4 +374,104 @@ public struct Profile: Codable, Equatable, Sendable {
         public var extraHeaders: [String: String]?
         public init() {}
     }
+}
+
+public struct TrafficSample: Codable, Equatable, Sendable {
+    public var up: Int64
+    public var down: Int64
+    public init(up: Int64, down: Int64) { self.up = up; self.down = down }
+}
+
+/// What the running engine has carried (GET /api/traffic).
+public struct Traffic: Codable, Equatable, Sendable {
+    public var available = false
+    public var upBps: Int64 = 0
+    public var downBps: Int64 = 0
+    public var upTotal: Int64 = 0
+    public var downTotal: Int64 = 0
+    public var history: [TrafficSample] = []
+    public init() {}
+}
+
+/// One routing rule: every entry that matches sends traffic to `outbound`.
+public struct RouteRule: Codable, Identifiable, Equatable, Hashable, Sendable {
+    public var id: String
+    public var name: String?
+    public var enabled: Bool
+    public var entries: [String]
+    public var outbound: String // proxy | direct | block
+    public init(id: String, name: String? = nil, enabled: Bool = true, entries: [String] = [], outbound: String = "proxy") {
+        self.id = id; self.name = name; self.enabled = enabled; self.entries = entries; self.outbound = outbound
+    }
+}
+
+public struct RuleSet: Codable, Identifiable, Equatable, Hashable, Sendable {
+    public var id: String
+    public var name: String
+    public var rules: [RouteRule]
+    public init(id: String, name: String, rules: [RouteRule] = []) { self.id = id; self.name = name; self.rules = rules }
+}
+
+/// Which rule a destination would hit (POST /api/routing/test).
+public struct RouteMatch: Codable, Equatable, Sendable {
+    public var outbound: String
+    public var ruleId: String?
+    public var entry: String?
+    public var unknown: [String]?
+}
+
+public struct ImportedRules: Codable, Equatable, Sendable {
+    public var rules: [RouteRule]
+    public var skipped: [String]
+}
+
+/// Per-server tweaks over the global settings; a missing field means "use the global one".
+public struct ServerOverrides: Codable, Equatable, Hashable, Sendable {
+    public struct Fragment: Codable, Equatable, Hashable, Sendable {
+        public var packets: String?
+        public var length: String?
+        public var interval: String?
+        public init(packets: String? = nil, length: String? = nil, interval: String? = nil) {
+            self.packets = packets; self.length = length; self.interval = interval
+        }
+    }
+
+    public var mux: Bool?
+    public var muxConcurrency: Int?
+    public var fragment: Fragment?
+    public var sni: String?
+    public var fingerprint: String?
+    public init() {}
+
+    public static let fingerprints = ["chrome", "firefox", "safari", "ios", "android", "edge", "random", "randomized"]
+
+    /// Drops empty strings and zero values so "nothing set" really sends nothing.
+    public var cleaned: ServerOverrides? {
+        var o = self
+        if (o.sni ?? "").trimmingCharacters(in: .whitespaces).isEmpty { o.sni = nil } else { o.sni = o.sni?.trimmingCharacters(in: .whitespaces) }
+        if (o.fingerprint ?? "").isEmpty { o.fingerprint = nil }
+        if (o.muxConcurrency ?? 0) <= 0 { o.muxConcurrency = nil }
+        if o.mux == nil { o.muxConcurrency = nil }
+        if var f = o.fragment {
+            for k in [\Fragment.packets, \Fragment.length, \Fragment.interval] where (f[keyPath: k] ?? "").trimmingCharacters(in: .whitespaces).isEmpty { f[keyPath: k] = nil }
+            o.fragment = f
+        }
+        return o == ServerOverrides() ? nil : o
+    }
+}
+
+/// A server written by hand as Xray or sing-box outbound JSON.
+public struct CustomConfig: Codable, Equatable, Hashable, Sendable {
+    public var engine: String // xray | sing-box
+    public var config: String
+    public init(engine: String, config: String) { self.engine = engine; self.config = config }
+}
+
+/// The configuration the app would run for a server: one entry per engine process.
+public struct ConfigPreview: Codable, Equatable, Identifiable, Sendable {
+    public var engines: [String]
+    public var configs: [String]
+    public var id: String { engines.joined(separator: "+") + String(configs.joined().hashValue) }
+    public var title = ""
+    enum CodingKeys: String, CodingKey { case engines, configs }
 }
