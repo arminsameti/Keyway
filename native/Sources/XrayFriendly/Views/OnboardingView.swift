@@ -20,7 +20,7 @@ struct OnboardingView: View {
     var body: some View {
         VStack(spacing: 0) {
             RoundedRectangle(cornerRadius: 17).fill(Palette.accent).frame(width: 72, height: 72)
-                .overlay(Image(systemName: "checkmark.shield").font(.system(size: 36, weight: .medium)).foregroundStyle(.white))
+                .overlay(BrandMark(fallback: "checkmark.shield", size: 46))
                 .shadow(color: .black.opacity(0.16), radius: 9, y: 6)
                 .accessibilityHidden(true)
             Text("Welcome to Xray Friendly").font(.system(size: 24, weight: .bold)).padding(.top, 18).padding(.bottom, 6)

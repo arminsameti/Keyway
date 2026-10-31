@@ -48,6 +48,7 @@ app: universal
 	cp bin/xf-tun-helper-universal $(APP)/Contents/MacOS/xf-tun-helper
 	cp native/Info.plist $(APP)/Contents/Info.plist
 	cp assets/icon.icns $(APP)/Contents/Resources/AppIcon.icns
+	cp assets/logo.png $(APP)/Contents/Resources/Logo.png
 	codesign --force --sign - $(APP)/Contents/MacOS/xray-friendly
 	codesign --force --sign - $(APP)/Contents/MacOS/xf-tun-helper
 	codesign --force --sign - $(APP)/Contents/MacOS/XrayFriendly

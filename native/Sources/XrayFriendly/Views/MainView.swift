@@ -181,7 +181,7 @@ struct ConnectionCard: View {
             RoundedRectangle(cornerRadius: 12)
                 .fill(connected ? Palette.green : Palette.idleShield)
                 .frame(width: 44, height: 44)
-                .overlay(Image(systemName: connected ? "checkmark.shield" : "shield").font(.system(size: 20, weight: .semibold)).foregroundStyle(.white))
+                .overlay(BrandMark(fallback: connected ? "checkmark.shield" : "shield", size: 28))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -659,5 +659,20 @@ struct ChainRouteCard: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Palette.separator))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Chain route")
+    }
+}
+
+/// The app's shield-and-key logo (white on transparent), shipped as Logo.png in the bundle.
+struct BrandMark: View {
+    let fallback: String
+    let size: CGFloat
+    private static let image: NSImage? = Bundle.main.url(forResource: "Logo", withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+
+    var body: some View {
+        if let img = Self.image {
+            Image(nsImage: img).resizable().interpolation(.high).scaledToFit().frame(width: size, height: size)
+        } else {
+            Image(systemName: fallback).font(.system(size: size * 0.7, weight: .semibold)).foregroundStyle(.white)
+        }
     }
 }
