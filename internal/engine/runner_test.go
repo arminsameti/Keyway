@@ -185,3 +185,54 @@ func TestReapStaleOnlyKillsMatchingCommand(t *testing.T) {
 		t.Fatal("garbage pid must be ignored")
 	}
 }
+
+// fakeHelper behaves like xf-tun-helper: log, ready file, stop on the stop file.
+func fakeHelper(t *testing.T, readyAfter string) (StartOptions, *Elevation) {
+	t.Helper()
+	dir := t.TempDir()
+	el := &Elevation{StopFile: filepath.Join(dir, "stop"), ReadyFile: filepath.Join(dir, "ready"), LogFile: filepath.Join(dir, "log")}
+	body := "echo tun-up >> " + el.LogFile + "\nsleep " + readyAfter + "\ntouch " + el.ReadyFile + "\n" +
+		"while [ ! -e " + el.StopFile + " ]; do sleep 0.1; done\necho bye >> " + el.LogFile
+	el.Command = []string{script(t, body)}
+	return StartOptions{Elevate: el}, el
+}
+
+func TestElevatedStartWaitsForReadyAndStopsThroughTheStopFile(t *testing.T) {
+	o, _ := fakeHelper(t, "0.5")
+	r := NewRunner(filepath.Join(t.TempDir(), "x.pid"))
+	begin := time.Now()
+	if err := r.Start(o); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(begin) < 400*time.Millisecond {
+		t.Error("Start must wait for the ready file, not just the startup grace")
+	}
+	if !r.IsRunning() {
+		t.Fatal("not running")
+	}
+	if err := r.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, func() bool { return !r.IsRunning() }, "stop")
+	var all string
+	waitFor(t, func() bool {
+		lines, _ := r.Logs(0)
+		all = strings.Join(lines, "\n")
+		return strings.Contains(all, "tun-up") && strings.Contains(all, "bye")
+	}, "the helper's log file in the activity log")
+	if st := r.Status(); st.LastExit != "stopped" {
+		t.Errorf("a requested stop is not a crash: %q", st.LastExit)
+	}
+}
+
+func TestElevatedStartReportsACancelledPasswordDialog(t *testing.T) {
+	r := NewRunner("")
+	err := r.Start(StartOptions{Elevate: &Elevation{Command: []string{script(t, "echo 'User canceled.' >&2\nexit 1")},
+		StopFile: filepath.Join(t.TempDir(), "s"), ReadyFile: filepath.Join(t.TempDir(), "r"), LogFile: filepath.Join(t.TempDir(), "l")}})
+	if err == nil || !strings.Contains(err.Error(), "User canceled") {
+		t.Errorf("err = %v", err)
+	}
+	if r.IsRunning() {
+		t.Error("nothing is running after a failed start")
+	}
+}

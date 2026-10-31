@@ -8,6 +8,7 @@ UNIBIN  := bin/xray-friendly-universal
 build:
 	@mkdir -p bin
 	go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/xray-friendly
+	go build -trimpath -ldflags '$(LDFLAGS)' -o bin/xf-tun-helper ./cmd/xf-tun-helper
 
 test:
 	go test -race -count=1 ./...
@@ -30,6 +31,10 @@ universal:
 	GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags '$(LDFLAGS)' -o bin/xf-amd64 ./cmd/xray-friendly
 	lipo -create -output $(UNIBIN) bin/xf-arm64 bin/xf-amd64
 	rm -f bin/xf-arm64 bin/xf-amd64
+	GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags '$(LDFLAGS)' -o bin/xh-arm64 ./cmd/xf-tun-helper
+	GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags '$(LDFLAGS)' -o bin/xh-amd64 ./cmd/xf-tun-helper
+	lipo -create -output bin/xf-tun-helper-universal bin/xh-arm64 bin/xh-amd64
+	rm -f bin/xh-arm64 bin/xh-amd64
 
 # macOS app bundle: the SwiftUI app (universal) plus the universal Go backend.
 APP         := dist/XrayFriendly.app
@@ -40,9 +45,11 @@ app: universal
 	mkdir -p $(APP)/Contents/MacOS $(APP)/Contents/Resources
 	cp "$$($(SWIFT_BUILD) --show-bin-path)/XrayFriendly" $(APP)/Contents/MacOS/XrayFriendly
 	cp $(UNIBIN) $(APP)/Contents/MacOS/xray-friendly
+	cp bin/xf-tun-helper-universal $(APP)/Contents/MacOS/xf-tun-helper
 	cp native/Info.plist $(APP)/Contents/Info.plist
 	cp assets/icon.icns $(APP)/Contents/Resources/AppIcon.icns
 	codesign --force --sign - $(APP)/Contents/MacOS/xray-friendly
+	codesign --force --sign - $(APP)/Contents/MacOS/xf-tun-helper
 	codesign --force --sign - $(APP)/Contents/MacOS/XrayFriendly
 	codesign --force --sign - $(APP)
 	codesign --verify --strict $(APP)

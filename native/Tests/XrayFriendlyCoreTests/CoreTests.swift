@@ -148,7 +148,7 @@ final class DecodeTests: XCTestCase {
         {"running":true,"pid":42,"startedAt":"2026-10-29T12:26:40.218514-07:00","lastExitAt":"0001-01-01T00:00:00Z",
          "activeNode":"Frankfurt test","activeNodeId":"7198","activeCountryCode":"DE","activeLatencyMs":40,"protocol":"VLESS",
          "transport":"TCP","engine":"xray","engineVersion":"v26.3.27","uptimeSec":3,"routingMode":"bypass-private",
-         "autoPick":false,"systemProxyServices":[],"systemProxyOn":false}
+         "autoPick":false,"systemProxyServices":[],"systemProxyOn":false,"tunOn":false}
         """
         let s = try APIClient.decoder.decode(Status.self, from: Data(json.utf8))
         XCTAssertTrue(s.running)
@@ -248,5 +248,15 @@ final class CustomFormTests: XCTestCase {
         XCTAssertEqual(p.custom, CustomConfig(engine: "sing-box", config: "{\"type\":\"direct\"}"))
         XCTAssertThrowsError(try CustomForm().profile())
         XCTAssertEqual(CustomForm(profile: p, name: "Mine").engine, "sing-box")
+    }
+}
+
+final class TUNSettingsTests: XCTestCase {
+    func testDecodesBackendShape() throws {
+        let json = #"{"enabled":true,"privilege":"helper","stack":"gvisor","mtu":1500,"strict":true}"#
+        let t = try JSONDecoder().decode(TUNSettings.self, from: Data(json.utf8))
+        XCTAssertTrue(t.enabled && t.strict)
+        XCTAssertEqual(t.privilege, "helper")
+        XCTAssertEqual(TUNSettings().privilege, "prompt", "asking every time is the default")
     }
 }

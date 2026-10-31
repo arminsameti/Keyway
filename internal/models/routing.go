@@ -17,7 +17,8 @@ import (
 //	geosite:cn           a community domain list
 //	geoip:cn, geoip:private, 10.0.0.0/8, 1.2.3.4   IP lists and ranges
 //	port:80,443,8000-9000
-//	process:Telegram, process-path:/Applications/X.app/...   (sing-box only)
+//	process:Telegram, process-path:/Applications/X.app/Contents/MacOS/X,
+//	app:/Applications/Telegram.app   every program inside that app   (sing-box only)
 //
 // A bare word is a keyword match.
 type RouteRule struct {
@@ -58,7 +59,7 @@ func EntryKind(e string) (string, error) {
 	if e == "" {
 		return "", fmt.Errorf("empty entry")
 	}
-	if strings.ContainsAny(e, " \t\r\n") && !strings.HasPrefix(e, "process-path:") && !strings.HasPrefix(e, "regexp:") {
+	if strings.ContainsAny(e, " \t\r\n") && !strings.HasPrefix(e, "process-path:") && !strings.HasPrefix(e, "app:") && !strings.HasPrefix(e, "regexp:") {
 		return "", fmt.Errorf("entry %q must not contain spaces", e)
 	}
 	for _, p := range []string{"domain:", "full:", "keyword:", "regexp:", "geosite:", "ext:"} {
@@ -78,7 +79,7 @@ func EntryKind(e string) (string, error) {
 	if v, ok := strings.CutPrefix(e, "port:"); ok {
 		return KindPort, validatePorts(v)
 	}
-	for _, p := range []string{"process:", "process-path:"} {
+	for _, p := range []string{"process:", "process-path:", "app:"} {
 		if v, ok := strings.CutPrefix(e, p); ok {
 			if strings.TrimSpace(v) == "" {
 				return "", fmt.Errorf("entry %q has nothing after %q", e, p)
@@ -186,3 +187,21 @@ func (s Settings) validateRuleSets(add func(string, ...any)) {
 		add("the active rule set no longer exists")
 	}
 }
+
+// NeedsProcessRouting reports whether an enabled rule matches by program.
+func (s Settings) NeedsProcessRouting() bool {
+	if s.RoutingMode != "rules" {
+		return false
+	}
+	for _, r := range s.ActiveRules() {
+		for _, e := range r.Entries {
+			if k, err := EntryKind(e); err == nil && k == KindProcess {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// NeedsSingBox reports whether the settings need a feature only sing-box has.
+func (s Settings) NeedsSingBox() bool { return s.NeedsProcessRouting() || s.TUN.Enabled }

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"xray-friendly/internal/engine"
+	"xray-friendly/internal/models"
 )
 
 func readFile(p string) ([]byte, error) { return os.ReadFile(p) }
@@ -45,7 +46,7 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 	if err != nil {
 		return ConnectResult{}, fmt.Errorf("node %q: %w", node.Name, err)
 	}
-	pl, err := s.planFor(hops, names, d)
+	pl, err := s.planFor(hops, names, d, s.finalFor(d))
 	for attempt := 0; attempt < len(s.engines); attempt++ {
 		var ni *engine.NotInstalledError
 		if !errors.As(err, &ni) || !s.autoDownloadOK(d) {
@@ -58,7 +59,7 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 			return ConnectResult{}, fmt.Errorf("%s is needed for this server, and downloading it failed: %w", ni.Engine.DisplayName(), derr)
 		}
 		d = s.store.Get()
-		pl, err = s.planFor(hops, names, d)
+		pl, err = s.planFor(hops, names, d, s.finalFor(d))
 	}
 	if err != nil {
 		return ConnectResult{}, err
@@ -77,6 +78,9 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 		return ConnectResult{}, serr
 	}
 	segs[len(segs)-1].Stats = stats
+	if d.Settings.TUN.Enabled {
+		segs[len(segs)-1].TUN = tunOptions(d.Settings.TUN, pl)
+	}
 
 	// write and preflight every segment's config before touching what runs now
 	s.removeSegmentConfigs()
@@ -98,13 +102,13 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 	if err := s.stopAll(); err != nil {
 		return ConnectResult{}, err
 	}
-	if err := s.startAll(pl, paths); err != nil {
+	if err := s.startAll(pl, paths, d); err != nil {
 		_ = s.stopAll()
 		s.dropSysProxy()
 		return ConnectResult{}, err
 	}
 	s.startTraffic(trafficSourceFor(final, pl.finalInstall(), stats))
-	s.setCurrent(runInfo{NodeID: node.ID, Engine: final, Version: pl.finalInstall().Version, Label: engine.EngineNames(pl.steps)})
+	s.setCurrent(runInfo{NodeID: node.ID, Engine: final, Version: pl.finalInstall().Version, Label: engine.EngineNames(pl.steps), TUN: d.Settings.TUN.Enabled})
 
 	res := ConnectResult{Config: paths[len(paths)-1]}
 	for k, st := range pl.steps {
@@ -142,7 +146,7 @@ func (s *Service) removeSegmentConfigs() {
 }
 
 // startAll launches the processes of a plan, the entry segment first.
-func (s *Service) startAll(pl *connPlan, paths []string) error {
+func (s *Service) startAll(pl *connPlan, paths []string, d models.AppData) error {
 	last := len(pl.steps) - 1
 	for k := 0; k < last; k++ {
 		l := pl.steps[k].Engine.Launch(pl.installs[k], paths[k])
@@ -157,6 +161,13 @@ func (s *Service) startAll(pl *connPlan, paths []string) error {
 		s.extraMu.Unlock()
 	}
 	l := pl.steps[last].Engine.Launch(pl.installs[last], paths[last])
+	if d.Settings.TUN.Enabled {
+		el, err := s.elevation(d, pl.installs[last], paths[last])
+		if err != nil {
+			return err
+		}
+		return s.run.Start(engine.StartOptions{Elevate: el})
+	}
 	return s.run.Start(engine.StartOptions{Binary: l.Binary, Args: l.Args, Env: l.Env})
 }
 
@@ -207,6 +218,7 @@ func (s *Service) Recover(ctx context.Context) {
 			s.log.Warn("stopped a stale engine process from a previous run", "pidfile", filepath.Base(pid))
 		}
 	}
+	s.stopStaleHelper()
 	s.recoverSysProxy(ctx)
 }
 

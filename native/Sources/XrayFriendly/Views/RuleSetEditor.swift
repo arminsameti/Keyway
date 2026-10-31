@@ -40,7 +40,7 @@ struct RuleSetEditor: View {
                 }
             }
             if let i = index {
-                CardSection(title: "Rules", footnote: "Entries, one per line: geosite:cn, geoip:ir, domain:example.org, full:www.example.org, keyword:bank, 10.0.0.0/8, port:80,443 or process:Slack (sing-box only).") {
+                CardSection(title: "Rules", footnote: "Entries, one per line: geosite:cn, geoip:ir, domain:example.org, full:www.example.org, keyword:bank, 10.0.0.0/8, port:80,443 or app:/Applications/Slack.app (sing-box only; use the app button to pick one).") {
                     ForEach(Array(sets[i].rules.enumerated()), id: \.element.id) { n, rule in
                         ruleRow(i, n, rule)
                     }
@@ -100,6 +100,9 @@ struct RuleSetEditor: View {
                     Text("Proxy").tag("proxy"); Text("Direct").tag("direct"); Text("Block").tag("block")
                 }
                 .labelsHidden().fixedSize()
+                Button { pickApp(i, n) } label: { Image(systemName: "app.badge") }
+                    .help("Add a program: its traffic follows this rule (needs sing-box)")
+                    .accessibilityLabel("Add app to rule \(n + 1)")
                 Button { RuleEditing.move(&sets[i].rules, id: rule.id, by: -1) } label: { Image(systemName: "chevron.up") }
                     .disabled(n == 0).accessibilityLabel("Move rule up")
                 Button { RuleEditing.move(&sets[i].rules, id: rule.id, by: 1) } label: { Image(systemName: "chevron.down") }
@@ -137,6 +140,19 @@ struct RuleSetEditor: View {
     }
 
     // MARK: actions
+
+    private func pickApp(_ i: Int, _ n: Int) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowsMultipleSelection = true
+        panel.message = "Choose the apps this rule applies to"
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls {
+            let entry = "app:" + url.path
+            if !sets[i].rules[n].entries.contains(entry) { sets[i].rules[n].entries.append(entry) }
+        }
+    }
 
     private var dirty: Bool { sets != model.settings.ruleSets || activeID != model.settings.activeRuleSet }
 

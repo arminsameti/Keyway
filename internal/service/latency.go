@@ -123,7 +123,7 @@ func (s *Service) probeNode(ctx context.Context, d models.AppData, n models.Node
 	if err != nil {
 		return models.LatencyFailed
 	}
-	pl, err := s.planFor(hops, names, d)
+	pl, err := s.planFor(hops, names, d, "")
 	if err != nil {
 		if errors.Is(err, core.ErrNotInstalled) {
 			return models.LatencyNA

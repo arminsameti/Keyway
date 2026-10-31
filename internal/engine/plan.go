@@ -26,7 +26,12 @@ func (s Step) Hops(all []profile.Profile) []profile.Profile { return all[s.From:
 //
 // When an engine in the plan is not installed, the plan is returned together
 // with a *NotInstalledError so the caller can fetch it and plan again.
-func PlanSegments(hops []profile.Profile, pref string, engines []Engine, installed func(string) bool) ([]Step, error) {
+//
+// final, when not empty, names the engine that must serve the user's traffic
+// (TUN and per-app rules need sing-box). If the plan ends on another engine, a
+// relay step with no hops of its own is appended: that process only forwards
+// to the previous one through the bridge.
+func PlanSegments(hops []profile.Profile, pref string, engines []Engine, installed func(string) bool, final string) ([]Step, error) {
 	if len(hops) == 0 {
 		return nil, fmt.Errorf("a chain needs at least one server")
 	}
@@ -78,6 +83,18 @@ func PlanSegments(hops []profile.Profile, pref string, engines []Engine, install
 		})
 		steps = append(steps, Step{Engine: cands[0].e, From: i, To: cands[0].to})
 		i = cands[0].to
+	}
+	if final != "" && steps[len(steps)-1].Engine.Name() != final {
+		var relay Engine
+		for _, e := range engines {
+			if e.Name() == final {
+				relay = e
+			}
+		}
+		if relay == nil {
+			return nil, fmt.Errorf("%w: %s is needed for this setup", ErrNoEngine, final)
+		}
+		steps = append(steps, Step{Engine: relay, From: len(hops), To: len(hops)})
 	}
 	for _, st := range steps {
 		if !installed(st.Engine.Name()) {

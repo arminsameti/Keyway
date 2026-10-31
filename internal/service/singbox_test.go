@@ -151,3 +151,85 @@ func TestMissingSingBoxIsReported(t *testing.T) {
 		t.Fatalf("insecure trojan: %v", err)
 	}
 }
+
+// fakeTUNHelper stands in for xf-tun-helper: it reports ready and stops on the stop file.
+func fakeTUNHelper(t *testing.T) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "xf-tun-helper")
+	body := `#!/bin/sh
+while [ $# -gt 0 ]; do case "$1" in --ready) R="$2";; --stop) S="$2";; --log) L="$2";; --config) C="$2";; esac; shift; done
+echo "helper ran with $C" >> "$L"
+touch "$R"
+while [ ! -e "$S" ]; do sleep 0.1; done
+`
+	if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestTUNConnectRunsSingBoxThroughTheHelper(t *testing.T) {
+	e := newTwoEngines(t, true)
+	helper := fakeTUNHelper(t)
+	oldHelper, oldAdmin := helperBinary, adminCommand
+	helperBinary = func() (string, error) { return helper, nil }
+	adminCommand = func(shell string) []string { return []string{"/bin/sh", "-c", shell} } // no password dialog in a test
+	t.Cleanup(func() { helperBinary, adminCommand = oldHelper, oldAdmin })
+
+	d := e.svc.store.Get().Settings
+	d.TUN.Enabled = true
+	if _, err := e.svc.UpdateSettings(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	st, _, err := e.connectTo(t, "trojan://p@tr.example.net:443?sni=tr.example.net#T")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Running || !st.TUNOn || st.Engine != "sing-box" {
+		t.Fatalf("status = %+v: TUN needs sing-box to serve the traffic, even for a server Xray would run", st)
+	}
+	cfg, _ := os.ReadFile(filepath.Join(e.dir, "config.json"))
+	for _, w := range []string{`"type": "tun"`, `"hijack-dns"`, `"find_process": true`} {
+		if !strings.Contains(string(cfg), w) {
+			t.Errorf("config lacks %s", w)
+		}
+	}
+	if cfg, _ := os.ReadFile(filepath.Join(e.dir, "config-segment-0.json")); !strings.Contains(string(cfg), `"bridge-in"`) {
+		t.Error("the Xray process behind the TUN relay must expose the bridge")
+	}
+	lines, _, _ := e.svc.Logs(0)
+	if !strings.Contains(strings.Join(lines, "\n"), "helper ran with") {
+		t.Errorf("the helper's log reaches the activity log: %v", lines)
+	}
+	if err := e.svc.Disconnect(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if e.svc.Status().Running {
+		t.Error("disconnect stops the elevated process through the stop file")
+	}
+}
+
+func TestTUNOptionsKeepEngineProgramsOutAndHelperMustBeInstalled(t *testing.T) {
+	pl := &connPlan{installs: []engine.Install{{Bin: "/e/xray"}, {Bin: "/e/sing-box"}, {Bin: "/e/xray"}}}
+	o := tunOptions(models.TUNSettings{Stack: "gvisor", MTU: 1500, Strict: true}, pl)
+	if len(o.ExcludePaths) != 2 || o.Stack != "gvisor" || !o.Strict {
+		t.Errorf("options = %+v", o)
+	}
+	if got := adminScript(`'a "b"' \x`); got != `do shell script "'a \"b\"' \\x" with administrator privileges` {
+		t.Errorf("script = %s", got)
+	}
+	oldHelper := helperBinary
+	helperBinary = func() (string, error) { return "/x/xf-tun-helper", nil }
+	t.Cleanup(func() { helperBinary = oldHelper })
+	s := &Service{dir: t.TempDir()}
+	d := models.AppData{Settings: models.DefaultSettings()}
+	d.Settings.TUN.Privilege = "helper"
+	if _, err := s.elevation(d, engine.Install{}, "/c.json"); !errors.Is(err, ErrTUNHelperMissing) {
+		t.Errorf("one-time authorization not installed: %v", err)
+	}
+	d.Settings.TUN.Privilege = "prompt"
+	el, err := s.elevation(d, engine.Install{Bin: "/e/sing-box"}, "/c.json")
+	if err != nil || !strings.HasPrefix(el.Command[2], "do shell script") || !strings.Contains(el.Command[2], "run-copy") {
+		t.Errorf("prompt mode: %v %v", el, err)
+	}
+}

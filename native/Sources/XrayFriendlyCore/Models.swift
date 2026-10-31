@@ -20,6 +20,7 @@ public struct Status: Codable, Equatable, Sendable {
     public var autoPick = false
     public var systemProxyServices: [String] = []
     public var systemProxyOn = false
+    public var tunOn = false
     public init() {}
 }
 
@@ -137,6 +138,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var autoDownloadEngines = true
     public var engineUpdateCheck = "weekly"
     public var latencyMethod = "real"
+    public var tun = TUNSettings()
     public var ruleSets: [RuleSet] = []
     public var activeRuleSet = ""
     public init() {}
@@ -474,4 +476,23 @@ public struct ConfigPreview: Codable, Equatable, Identifiable, Sendable {
     public var id: String { engines.joined(separator: "+") + String(configs.joined().hashValue) }
     public var title = ""
     enum CodingKeys: String, CodingKey { case engines, configs }
+}
+
+/// Capture all traffic with a virtual interface (needs administrator rights).
+public struct TUNSettings: Codable, Equatable, Hashable, Sendable {
+    public var enabled = false
+    public var privilege = "prompt" // prompt: ask for the password on every connect | helper: allow once
+    public var stack = "mixed"
+    public var mtu = 9000
+    public var strict = false
+    public init() {}
+}
+
+/// State of one-time administrator authorization (GET /api/tun/helper).
+public struct TUNHelper: Codable, Equatable, Sendable {
+    public var available = false
+    public var installed = false
+    public var pinnedVersion: String?
+    public var outdated = false
+    public init() {}
 }

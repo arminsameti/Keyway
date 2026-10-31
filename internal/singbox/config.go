@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -162,7 +163,10 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 		cfg.Route.Rules = []Rule{}
 		return cfg, nil
 	}
-	exit := seg.Hops[len(seg.Hops)-1]
+	var exit profile.Profile
+	if len(seg.Hops) > 0 {
+		exit = seg.Hops[len(seg.Hops)-1]
+	}
 	if on, conc := muxFor(s, exit); on && muxCapable(exit) {
 		for i := range cfg.Outbounds {
 			if cfg.Outbounds[i].Tag == "proxy" {
@@ -184,9 +188,12 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 	if err != nil {
 		return nil, err
 	}
+	if seg.TUN != nil {
+		rules = addTUN(cfg, seg.TUN, rules)
+	}
 	cfg.Route.Rules, cfg.Route.RuleSet = rules, sets
 	for _, r := range rules {
-		if len(r.ProcessName) > 0 || len(r.ProcessPath) > 0 {
+		if len(r.ProcessName) > 0 || len(r.ProcessPath) > 0 || len(r.ProcessRegex) > 0 {
 			cfg.Route.FindProcess = true
 		}
 	}
@@ -195,6 +202,34 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 			ExternalController: net.JoinHostPort("127.0.0.1", strconv.Itoa(seg.Stats.Port)), Secret: seg.Stats.Secret}}
 	}
 	return cfg, nil
+}
+
+// addTUN adds the virtual interface. The first rules keep the engine
+// programs of the other processes (and DNS) out of the loop: DNS queries are
+// answered by sing-box, and an engine process that dials its server through the
+// tunnel would be sent back into it.
+func addTUN(cfg *Config, t *profile.TUNOptions, rules []Rule) []Rule {
+	cfg.Inbounds = append(cfg.Inbounds, Inbound{Type: "tun", Tag: "tun-in", Address: []string{"172.19.0.1/30"}, AutoRoute: true,
+		StrictRoute: t.Strict, Stack: orDefault(t.Stack, "mixed"), MTU: t.MTU})
+	cfg.Route.AutoDetectInterface = true
+	cfg.Route.FindProcess = true
+	var head []Rule
+	for _, r := range rules { // keep sniff first: later rules match on the sniffed domain
+		if r.Action == "sniff" {
+			head = append(head, r)
+		}
+	}
+	head = append(head, Rule{Protocol: "dns", Action: "hijack-dns"})
+	if len(t.ExcludePaths) > 0 {
+		head = append(head, Rule{ProcessPath: t.ExcludePaths, Outbound: "direct"})
+	}
+	var rest []Rule
+	for _, r := range rules {
+		if r.Action != "sniff" {
+			rest = append(rest, r)
+		}
+	}
+	return append(head, rest...)
 }
 
 // muxFor resolves multiplexing for the exit server: its own override, else the global setting.
@@ -237,7 +272,7 @@ func ProbeConfig(seg profile.Segment, port int) (*Config, error) {
 // direct outbound and the system resolver used for the first server address.
 func base(seg profile.Segment) (*Config, error) {
 	n := len(seg.Hops)
-	if n == 0 {
+	if n == 0 && seg.Upstream == nil {
 		return nil, fmt.Errorf("a segment needs at least one hop")
 	}
 	for _, h := range seg.Hops {
@@ -251,6 +286,13 @@ func base(seg profile.Segment) (*Config, error) {
 	cfg := &Config{
 		DNS:   &DNS{Servers: []DNSServer{{Type: "local", Tag: "local"}}, Final: "local"},
 		Route: Route{Final: "proxy", DefaultDomainResolver: "local"},
+	}
+	if n == 0 {
+		// a relay: it only forwards everything to the previous process
+		u := seg.Upstream
+		cfg.Outbounds = []Outbound{{Type: "socks", Tag: "proxy", Server: "127.0.0.1", ServerPort: u.Port, Version: "5", Username: u.User, Password: u.Pass},
+			{Type: "direct", Tag: "direct"}}
+		return cfg, nil
 	}
 	if n == 1 && seg.Hops[0].Protocol == profile.Custom {
 		if seg.Upstream != nil {
@@ -571,7 +613,8 @@ func listRules(l routeList, sets map[string]bool) ([]Rule, error) {
 			kind string
 			vals []string
 		}{{"domain", one.Domain}, {"domain_suffix", one.DomainSuffix}, {"domain_keyword", one.DomainKeyword}, {"domain_regex", one.DomainRegex},
-			{"ip_cidr", one.IPCIDR}, {"port_range", one.PortRange}, {"process_name", one.ProcessName}, {"process_path", one.ProcessPath}} {
+			{"ip_cidr", one.IPCIDR}, {"port_range", one.PortRange}, {"process_name", one.ProcessName}, {"process_path", one.ProcessPath},
+			{"process_path_regex", one.ProcessRegex}} {
 			kind, vals := kv.kind, kv.vals
 			if len(vals) == 0 {
 				continue
@@ -585,6 +628,7 @@ func listRules(l routeList, sets map[string]bool) ([]Rule, error) {
 			g.PortRange = append(g.PortRange, pick(kind == "port_range", vals)...)
 			g.ProcessName = append(g.ProcessName, pick(kind == "process_name", vals)...)
 			g.ProcessPath = append(g.ProcessPath, pick(kind == "process_path", vals)...)
+			g.ProcessRegex = append(g.ProcessRegex, pick(kind == "process_path_regex", vals)...)
 		}
 		if one.IPIsPrivate {
 			group("ip_is_private").IPIsPrivate = true
@@ -638,6 +682,9 @@ func addMatcher(r *Rule, e string) error {
 				r.PortRange = append(r.PortRange, fmt.Sprintf("%d:%d", pr[0], pr[1]))
 			}
 		}
+	case strings.HasPrefix(e, "app:"):
+		app := strings.TrimRight(strings.TrimPrefix(e, "app:"), "/")
+		r.ProcessRegex = append(r.ProcessRegex, "^"+regexp.QuoteMeta(app)+"/")
 	case strings.HasPrefix(e, "process-path:"):
 		r.ProcessPath = append(r.ProcessPath, strings.TrimPrefix(e, "process-path:"))
 	case strings.HasPrefix(e, "process:"):
