@@ -86,6 +86,8 @@ type Settings struct {
 	EngineUpdateCheck   string `json:"engineUpdateCheck"`   // never | daily | weekly
 	LatencyMethod       string `json:"latencyMethod"`       // tcp | real
 
+	TUN TUNSettings `json:"tun"`
+
 	RuleSets      []RuleSet `json:"ruleSets"`      // used by routing mode "rules"
 	ActiveRuleSet string    `json:"activeRuleSet"` // ID of the rule set in use
 }
@@ -134,6 +136,7 @@ func DefaultSettings() Settings {
 		AutoDownloadEngines: true,
 		EngineUpdateCheck:   "weekly",
 		LatencyMethod:       "real",
+		TUN:                 TUNSettings{Privilege: "prompt", Stack: "mixed", MTU: 9000},
 	}
 }
 

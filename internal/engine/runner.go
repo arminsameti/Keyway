@@ -29,7 +29,26 @@ type StartOptions struct {
 	Binary string
 	Args   []string
 	Env    []string // added to the inherited environment
+
+	// Elevate runs the engine through the privileged helper instead (TUN).
+	Elevate *Elevation
 }
+
+// Elevation describes an engine that runs as root. Command is what the app
+// starts (sudo, or the system's password dialog); the helper it launches
+// reports through three files in the user's data directory.
+type Elevation struct {
+	Command   []string
+	StopFile  string // created to ask the helper to stop sing-box
+	ReadyFile string // created by the helper once sing-box has been running for a moment
+	LogFile   string // sing-box's output; read into the activity log
+}
+
+// elevatedStartTimeout leaves time for the user to type a password.
+const (
+	elevatedStartTimeout = 2 * time.Minute
+	elevatedStopTimeout  = 8 * time.Second
+)
 
 // Status is a snapshot of the runner.
 type Status struct {
@@ -44,6 +63,7 @@ type Status struct {
 // exit of an old process can never touch the state of a newer one.
 type process struct {
 	cmd      *exec.Cmd
+	elev     *Elevation
 	done     chan struct{}
 	started  time.Time
 	stopping atomic.Bool
@@ -89,6 +109,10 @@ func (r *Runner) Start(opts StartOptions) error {
 	if r.cur != nil {
 		r.mu.Unlock()
 		return ErrAlreadyRunning
+	}
+	if opts.Elevate != nil {
+		r.mu.Unlock()
+		return r.startElevated(opts)
 	}
 	cmd := exec.Command(opts.Binary, opts.Args...)
 	cmd.Env = append(os.Environ(), opts.Env...)
@@ -151,6 +175,96 @@ func describeExit(err error, unexpected bool) string {
 	return s
 }
 
+// startElevated launches the helper and waits until it reports sing-box running
+// (or until it fails: the user cancelled the password dialog, sudo asked for a
+// password, sing-box refused its config).
+func (r *Runner) startElevated(opts StartOptions) error {
+	el := opts.Elevate
+	for _, f := range []string{el.StopFile, el.ReadyFile, el.LogFile} {
+		_ = os.Remove(f)
+	}
+	r.mu.Lock()
+	if r.cur != nil {
+		r.mu.Unlock()
+		return ErrAlreadyRunning
+	}
+	cmd := exec.Command(el.Command[0], el.Command[1:]...)
+	cmd.Env = os.Environ()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	w := &lineWriter{emit: r.emit}
+	cmd.Stdout, cmd.Stderr = w, w
+	if err := cmd.Start(); err != nil {
+		r.mu.Unlock()
+		return fmt.Errorf("start the privileged helper: %w", err)
+	}
+	p := &process{cmd: cmd, elev: el, done: make(chan struct{}), started: time.Now()}
+	r.cur = p
+	r.writePID(cmd.Process.Pid)
+	r.emit("waiting for administrator approval to start sing-box with a TUN interface")
+	r.mu.Unlock()
+
+	go r.wait(p)
+	go r.tailLog(p)
+
+	deadline := time.After(elevatedStartTimeout)
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-p.done:
+			return fmt.Errorf("could not start with administrator rights: %s", r.logs.tail(4))
+		case <-deadline:
+			_ = r.Stop()
+			return errors.New("timed out waiting for administrator approval")
+		case <-tick.C:
+			if _, err := os.Stat(el.ReadyFile); err == nil {
+				r.emit("sing-box is running with administrator rights")
+				return nil
+			}
+		}
+	}
+}
+
+// tailLog copies the elevated engine's log file into the activity log.
+func (r *Runner) tailLog(p *process) {
+	lw := &lineWriter{emit: r.emit}
+	var off int64
+	read := func() {
+		f, err := os.Open(p.elev.LogFile)
+		if err != nil {
+			return
+		}
+		defer f.Close()
+		if _, err := f.Seek(off, 0); err != nil {
+			return
+		}
+		buf := make([]byte, 64<<10)
+		for {
+			n, err := f.Read(buf)
+			if n > 0 {
+				off += int64(n)
+				_, _ = lw.Write(buf[:n])
+			}
+			if err != nil {
+				return
+			}
+		}
+	}
+	tick := time.NewTicker(300 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-p.done:
+			time.Sleep(200 * time.Millisecond)
+			read()
+			lw.flush()
+			return
+		case <-tick.C:
+			read()
+		}
+	}
+}
+
 // Stop terminates the process (SIGTERM, then SIGKILL) and waits for it to exit.
 func (r *Runner) Stop() error {
 	r.mu.Lock()
@@ -160,6 +274,15 @@ func (r *Runner) Stop() error {
 		return nil
 	}
 	p.stopping.Store(true)
+	if p.elev != nil {
+		// root's process cannot be signalled by us: ask the helper to stop it
+		_ = os.WriteFile(p.elev.StopFile, nil, 0o600)
+		select {
+		case <-p.done:
+			return nil
+		case <-time.After(elevatedStopTimeout):
+		}
+	}
 	_ = p.cmd.Process.Signal(syscall.SIGTERM)
 	select {
 	case <-p.done:

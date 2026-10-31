@@ -204,6 +204,19 @@ func TestRealEngineSingBoxAcceptsEveryConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	singBoxCheck(t, bin, cc, "custom config")
+	appRules := rs
+	appRules.RuleSets = []models.RuleSet{{ID: "r", Name: "r", Rules: []models.RouteRule{
+		{ID: "1", Enabled: true, Outbound: "direct", Entries: []string{"app:/Applications/Some App.app"}}}}}
+	tun, err := BuildConfig(profile.Segment{Hops: []profile.Profile{hops["wireguard"]}, TUN: &profile.TUNOptions{Stack: "mixed", MTU: 9000, Strict: true, ExcludePaths: []string{"/tmp/xray"}}}, appRules, rsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	singBoxCheck(t, bin, tun, "tun and app rules")
+	relay, err := BuildConfig(profile.Segment{Upstream: up, TUN: &profile.TUNOptions{Stack: "gvisor", MTU: 1500}}, s, rsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	singBoxCheck(t, bin, relay, "relay with tun")
 	last, err := BuildConfig(profile.Segment{Hops: []profile.Profile{hops["wireguard"]}, Upstream: up}, s, rsPath)
 	if err != nil {
 		t.Fatal(err)

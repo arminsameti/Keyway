@@ -75,13 +75,15 @@ func (s *Service) hopsOf(d models.AppData, ids []string) ([]profile.Profile, []s
 // planFor splits the hops into processes and resolves the installed engines.
 // When an engine is missing the error wraps core.ErrNotInstalled and
 // *engine.NotInstalledError.
-func (s *Service) planFor(hops []profile.Profile, names []string, d models.AppData) (*connPlan, error) {
+//
+// final names the engine that must serve the user's traffic ("" = any).
+func (s *Service) planFor(hops []profile.Profile, names []string, d models.AppData, final string) (*connPlan, error) {
 	if len(hops) > 1 {
 		if err := profile.CheckChain(hops, names); err != nil {
 			return nil, &models.ValidationError{Msg: err.Error()}
 		}
 	}
-	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), s.installed)
+	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), s.installed, final)
 	var ni *engine.NotInstalledError
 	if errors.As(err, &ni) {
 		return nil, fmt.Errorf("%w: %w", core.ErrNotInstalled, ni)
@@ -218,7 +220,7 @@ func (s *Service) checkChain(d models.AppData, ids []string) ([]profile.Profile,
 	if err := profile.CheckChain(hops, names); err != nil {
 		return nil, nil, &models.ValidationError{Msg: err.Error()}
 	}
-	if _, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true }); err != nil {
+	if _, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true }, ""); err != nil {
 		return nil, nil, &models.ValidationError{Msg: err.Error()}
 	}
 	return hops, names, nil
@@ -340,7 +342,7 @@ func (s *Service) PlanChain(ids []string) (ChainPlan, error) {
 	if err != nil {
 		return ChainPlan{}, err
 	}
-	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true })
+	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true }, "")
 	if err != nil {
 		return ChainPlan{}, &models.ValidationError{Msg: err.Error()}
 	}
@@ -377,7 +379,7 @@ func (s *Service) PreviewConfig(id string) (ConfigPreview, error) {
 			return ConfigPreview{}, &models.ValidationError{Msg: err.Error()}
 		}
 	}
-	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true })
+	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true }, s.finalFor(d))
 	if err != nil {
 		return ConfigPreview{}, &models.ValidationError{Msg: err.Error()}
 	}
@@ -396,4 +398,13 @@ func (s *Service) PreviewConfig(id string) (ConfigPreview, error) {
 		out.Configs = append(out.Configs, string(cfg))
 	}
 	return out, nil
+}
+
+// finalFor names the engine that must serve the user's traffic: sing-box when
+// the settings need something only it can do (a TUN interface, per-app rules).
+func (s *Service) finalFor(d models.AppData) string {
+	if d.Settings.NeedsSingBox() {
+		return engine.NameSingBox
+	}
+	return ""
 }

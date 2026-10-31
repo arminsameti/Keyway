@@ -169,6 +169,7 @@ type runInfo struct {
 	Engine  engine.Engine // the process that carries the user's traffic
 	Version string
 	Label   string // every engine of the connection, e.g. "sing-box + Xray core"
+	TUN     bool   // sing-box runs with a TUN interface
 }
 
 func (s *Service) setCurrent(r runInfo) {
@@ -240,6 +241,7 @@ type Status struct {
 	AutoPick        bool     `json:"autoPick"`
 	SystemProxy     []string `json:"systemProxyServices"`
 	SystemProxyOn   bool     `json:"systemProxyOn"`
+	TUNOn           bool     `json:"tunOn"` // all traffic is captured by a TUN interface
 }
 
 // Status returns the runner state plus what is connected.
@@ -258,6 +260,7 @@ func (s *Service) Status() Status {
 		}
 		if cur.Engine != nil {
 			st.Engine, st.EngineVersion, st.EngineLabel = cur.Engine.Name(), cur.Version, cur.Label
+			st.TUNOn = cur.TUN
 		}
 		if !st.StartedAt.IsZero() {
 			st.UptimeSec = int64(time.Since(st.StartedAt).Seconds())

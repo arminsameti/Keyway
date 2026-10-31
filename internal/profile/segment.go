@@ -25,6 +25,19 @@ type Segment struct {
 	Upstream *Bridge
 	Listen   *Bridge
 	Stats    *StatsAPI
+	TUN      *TUNOptions
+}
+
+// TUNOptions asks the segment that serves the user to capture all traffic
+// through a virtual interface (sing-box only).
+type TUNOptions struct {
+	Stack  string
+	MTU    int
+	Strict bool
+	// ExcludePaths are the engine programs of the other processes of the
+	// connection; their own traffic must leave directly, or it would loop back
+	// into the tunnel.
+	ExcludePaths []string
 }
 
 // StatsAPI is the loopback endpoint an engine reports its traffic on. Secret

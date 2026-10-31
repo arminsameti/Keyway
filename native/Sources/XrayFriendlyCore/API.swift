@@ -82,6 +82,11 @@ public final class APIClient: @unchecked Sendable {
 
     public func nodeConfig(_ id: String) async throws -> ConfigPreview { try await get("/api/nodes/\(id)/config") }
 
+    public func tunHelper() async throws -> TUNHelper { try await get("/api/tun/helper", as: TUNHelperBody.self).helper }
+    public func setTunHelper(install: Bool) async throws -> TUNHelper {
+        try await post("/api/tun/helper", ["action": install ? "install" : "uninstall"], as: TUNHelperBody.self, timeout: 200).helper
+    }
+
     public func traffic() async throws -> Traffic { try await get("/api/traffic") }
     public func state() async throws -> AppSnapshot { try await get("/api/state") }
     public func settings() async throws -> AppSettings { try await get("/api/settings") }
@@ -160,6 +165,7 @@ struct JobsBody: Decodable { let jobs: [Job] }
 struct JobBody: Decodable { let job: Job }
 struct LatencyBody: Decodable { let latency: [String: Int] }
 struct NodeBody: Decodable { let node: Node }
+struct TUNHelperBody: Decodable { let helper: TUNHelper }
 struct TestBody: Decodable { let latencyMs: Int }
 struct ChainPlanBody: Decodable { let plan: ChainPlan }
 struct ReleasesBody: Decodable { let releases: [Release] }

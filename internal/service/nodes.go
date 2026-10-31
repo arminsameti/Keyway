@@ -216,7 +216,7 @@ func (s *Service) TestServer(ctx context.Context, in NodeInput) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	pl, err := s.planFor(hops, names, d)
+	pl, err := s.planFor(hops, names, d, "")
 	if err != nil {
 		return 0, err
 	}
@@ -376,7 +376,7 @@ func (s *Service) chainView(d models.AppData, v NodeView) NodeView {
 		v.Error = err.Error()
 		return v
 	}
-	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true })
+	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true }, "")
 	if err != nil {
 		v.EngineReason = err.Error()
 		return v

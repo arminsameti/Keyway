@@ -55,6 +55,7 @@ func (s *Settings) Normalize() {
 	if s.RoutingMode == "" {
 		s.RoutingMode = d.RoutingMode
 	}
+	s.TUN.normalize()
 	s.LogLevel = strings.ToLower(strings.TrimSpace(s.LogLevel))
 	if s.LogLevel == "" {
 		s.LogLevel = d.LogLevel
@@ -104,6 +105,7 @@ func (s Settings) Validate() error {
 		add("unknown routing mode %q", s.RoutingMode)
 	}
 	s.validateRuleSets(add)
+	s.TUN.validate(add)
 	if !logLevels[s.LogLevel] {
 		add("unknown log level %q", s.LogLevel)
 	}

@@ -81,6 +81,7 @@ struct ProxyPane: View {
                     }
                 }
             }
+            TunCard()
             CardSection(title: "Multiplexing", footnote: "Shares one connection for many requests. Not used with XTLS Vision, gRPC, HTTP/2 or QUIC protocols.") {
                 CardRow(label: "Multiplex connections", first: true) {
                     Toggle("Multiplex", isOn: settingBinding(model, \.mux)).labelsHidden()

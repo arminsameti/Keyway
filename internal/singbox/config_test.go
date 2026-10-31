@@ -414,3 +414,40 @@ func TestCustomOutboundsAndEndpoints(t *testing.T) {
 		t.Error("sing-box must refuse Xray JSON")
 	}
 }
+
+func TestTUNInboundKeepsDNSAndEnginesOutOfTheLoop(t *testing.T) {
+	p := profile.Profile{Protocol: profile.Trojan, Server: "a.example.com", Port: 443, Password: "p", Security: tlsSec}
+	seg := profile.Segment{Hops: []profile.Profile{p}, TUN: &profile.TUNOptions{Stack: "mixed", MTU: 9000, Strict: true, ExcludePaths: []string{"/e/xray"}}}
+	cfg, err := BuildConfig(seg, models.DefaultSettings(), rsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := js(t, cfg)
+	want(t, "tun", got, `"type":"tun","tag":"tun-in"`, `"auto_route":true`, `"strict_route":true`, `"mtu":9000`, `"stack":"mixed"`,
+		`"auto_detect_interface":true`, `"find_process":true`, `{"action":"hijack-dns","protocol":"dns"}`,
+		`{"outbound":"direct","process_path":["/e/xray"]}`)
+	if i, j := strings.Index(got, `"action":"sniff"`), strings.Index(got, "hijack-dns"); i < 0 || i > j {
+		t.Error("sniffing must run before the DNS hijack and the routing rules")
+	}
+	// the user's own proxy ports stay available next to the interface
+	if !strings.Contains(got, `"tag":"socks-in"`) {
+		t.Error("the local proxy ports stay")
+	}
+}
+
+func TestAppRuleBecomesAPathRegexAndARelayHasNoHops(t *testing.T) {
+	p := profile.Profile{Protocol: profile.Trojan, Server: "a.example.com", Port: 443, Password: "p", Security: tlsSec}
+	got := build(t, p, ruleSetOf(models.RouteRule{ID: "a", Enabled: true, Outbound: "direct", Entries: []string{"app:/Applications/Fire Fox.app/"}}))
+	want(t, "app rule", got, `"process_path_regex":["^/Applications/Fire Fox\\.app/"]`, `"find_process":true`)
+
+	bridge := &profile.Bridge{Port: 4000, User: "u", Pass: "p"}
+	cfg, err := BuildConfig(profile.Segment{Upstream: bridge}, models.DefaultSettings(), rsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got = js(t, cfg.Outbounds)
+	want(t, "relay", got, `"type":"socks","tag":"proxy","server":"127.0.0.1","server_port":4000`)
+	if _, err := BuildConfig(profile.Segment{}, models.DefaultSettings(), rsPath); err == nil {
+		t.Error("a segment with neither hops nor an upstream is nothing")
+	}
+}

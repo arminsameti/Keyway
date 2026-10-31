@@ -53,6 +53,8 @@ final class AppModel {
     var focusSearch = false // set by ⌘F; MainView focuses the search field
     var qrNode: Node?
     var configPreview: ConfigPreview?
+    private(set) var tunHelper = TUNHelper()
+    var tunBusy = false
     var errorMessage: String?
     var testing = false
     var connecting = false
@@ -281,6 +283,23 @@ final class AppModel {
     func save(_ s: AppSettings) {
         settings = s
         perform { try await $0.saveSettings(s) }
+    }
+
+    func refreshTunHelper() {
+        guard let client else { return }
+        Task { if let h = try? await client.tunHelper() { tunHelper = h } }
+    }
+
+    /// Installs or removes one-time authorization; macOS shows its password dialog.
+    func setTunHelper(install: Bool) {
+        guard let client, !tunBusy else { return }
+        tunBusy = true
+        Task {
+            defer { tunBusy = false }
+            do { tunHelper = try await client.setTunHelper(install: install) } catch {
+                if !error.localizedDescription.contains("cancelled") { errorMessage = error.localizedDescription }
+            }
+        }
     }
 
     func showConfig(of node: Node) {

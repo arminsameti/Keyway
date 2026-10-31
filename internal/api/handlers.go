@@ -391,3 +391,24 @@ func (s *Server) nodeConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	ok(w, map[string]any{"engines": p.Engines, "configs": p.Configs})
 }
+
+func (s *Server) tunHelper(w http.ResponseWriter, r *http.Request) {
+	ok(w, map[string]any{"helper": s.svc.TUNHelperStatus()})
+}
+
+// setTunHelper installs or removes one-time authorization; macOS asks for the password.
+func (s *Server) setTunHelper(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		Action string `json:"action"` // install | uninstall
+	}
+	if err := decode(r, &b, false); err != nil || (b.Action != "install" && b.Action != "uninstall") {
+		failErr(w, &models.ValidationError{Msg: "action must be install or uninstall"}, http.StatusBadRequest)
+		return
+	}
+	h, err := s.svc.SetTUNHelper(r.Context(), b.Action == "install")
+	if err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	ok(w, map[string]any{"helper": h})
+}

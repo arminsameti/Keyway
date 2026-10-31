@@ -53,9 +53,16 @@ type User struct {
 type Inbound struct {
 	Type       string `json:"type"` // socks http
 	Tag        string `json:"tag"`
-	Listen     string `json:"listen"`
-	ListenPort int    `json:"listen_port"`
+	Listen     string `json:"listen,omitempty"`
+	ListenPort int    `json:"listen_port,omitempty"`
 	Users      []User `json:"users,omitempty"`
+
+	// tun
+	Address     []string `json:"address,omitempty"`
+	AutoRoute   bool     `json:"auto_route,omitempty"`
+	StrictRoute bool     `json:"strict_route,omitempty"`
+	Stack       string   `json:"stack,omitempty"`
+	MTU         int      `json:"mtu,omitempty"`
 }
 
 // Outbound is the union of the outbound fields this app uses; unused ones are omitted.
@@ -190,6 +197,7 @@ type Rule struct {
 	PortRange     []string `json:"port_range,omitempty"`
 	ProcessName   []string `json:"process_name,omitempty"`
 	ProcessPath   []string `json:"process_path,omitempty"`
+	ProcessRegex  []string `json:"process_path_regex,omitempty"`
 	RuleSet       []string `json:"rule_set,omitempty"`
 }
 

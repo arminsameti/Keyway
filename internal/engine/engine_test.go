@@ -116,7 +116,7 @@ func TestPlanSegments(t *testing.T) {
 		{"run limit of an engine", []string{"vless", "vless", "vless", "vless", "vless"}, []Engine{x}, "xray", "xray[0:4] xray[4:5]"},
 	}
 	for _, c := range cases {
-		steps, err := PlanSegments(hopsOf(c.hops...), c.pref, c.engines, all)
+		steps, err := PlanSegments(hopsOf(c.hops...), c.pref, c.engines, all, "")
 		if err != nil {
 			t.Errorf("%s: %v", c.name, err)
 			continue
@@ -128,29 +128,38 @@ func TestPlanSegments(t *testing.T) {
 
 	// an installed engine beats an equally capable one that is not installed
 	onlySB := func(n string) bool { return n == "sing-box" }
-	steps, err := PlanSegments(hopsOf("vless", "trojan"), "xray", []Engine{x, sb}, onlySB)
+	steps, err := PlanSegments(hopsOf("vless", "trojan"), "xray", []Engine{x, sb}, onlySB, "")
 	if err != nil || shape(steps) != "sing-box[0:2]" {
 		t.Errorf("installed engine must win a tie: %s %v", shape(steps), err)
 	}
 	// a needed engine that is not installed is reported with the plan
-	steps, err = PlanSegments(hopsOf("openvpn", "vless"), "xray", []Engine{x, sb}, func(n string) bool { return n == "xray" })
+	steps, err = PlanSegments(hopsOf("openvpn", "vless"), "xray", []Engine{x, sb}, func(n string) bool { return n == "xray" }, "")
 	var ni *NotInstalledError
 	if !errors.As(err, &ni) || ni.Engine.Name() != "sing-box" || shape(steps) != "sing-box[0:2]" {
 		t.Errorf("missing engine: %s %v", shape(steps), err)
 	}
 	// nothing can run a hop: the error names the hop and every engine's reason
-	_, err = PlanSegments(hopsOf("vless", "ssh"), "xray", []Engine{x, sb}, all)
+	_, err = PlanSegments(hopsOf("vless", "ssh"), "xray", []Engine{x, sb}, all, "")
 	if !errors.Is(err, ErrNoEngine) || !strings.Contains(err.Error(), "hop 2") || !strings.Contains(err.Error(), "xray cannot run ssh") || !strings.Contains(err.Error(), "sing-box cannot run ssh") {
 		t.Errorf("unsupported hop: %v", err)
 	}
 	// an engine that cannot follow another process leaves the hop to one that can
 	noUp := fake{name: "xray", protos: map[string]bool{"vless": true, "xhttp": true}, noUpstream: true}
-	steps, err = PlanSegments(hopsOf("openvpn", "vless"), "xray", []Engine{noUp, sb}, all)
+	steps, err = PlanSegments(hopsOf("openvpn", "vless"), "xray", []Engine{noUp, sb}, all, "")
 	if err != nil || shape(steps) != "sing-box[0:2]" {
 		t.Errorf("noUpstream: %s %v", shape(steps), err)
 	}
-	if _, err := PlanSegments(nil, "xray", []Engine{x}, all); err == nil {
+	if _, err := PlanSegments(nil, "xray", []Engine{x}, all, ""); err == nil {
 		t.Error("an empty chain is refused")
+	}
+	// a required final engine appends a relay when the plan ends elsewhere
+	steps, err = PlanSegments(hopsOf("vless", "vless"), "xray", []Engine{x, sb}, all, "sing-box")
+	if err != nil || shape(steps) != "xray[0:2] sing-box[2:2]" {
+		t.Errorf("relay: %s %v", shape(steps), err)
+	}
+	steps, err = PlanSegments(hopsOf("vless", "vless"), "sing-box", []Engine{x, sb}, all, "sing-box")
+	if err != nil || len(steps) != 1 || steps[0].Engine.Name() != "sing-box" {
+		t.Errorf("no relay when sing-box already serves the traffic: %s %v", shape(steps), err)
 	}
 	if EngineNames([]Step{{Engine: sb}, {Engine: x}, {Engine: x}, {Engine: sb}}) != "sing-box + xray + sing-box" {
 		t.Error("engine names")
