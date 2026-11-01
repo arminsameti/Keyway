@@ -32,6 +32,10 @@ func Supports(p profile.Profile) error {
 		// Xray 26 removed allowInsecure; sing-box still offers it.
 		return fmt.Errorf("skipping certificate verification needs sing-box (Xray accepts only a pinned certificate)")
 	}
+	if p.Protocol == profile.VLESS && (p.Security.Kind == "" || p.Security.Kind == "none") && !localAddress(p.Server) {
+		// Xray 26 refuses unencrypted VLESS to anything but a private address; sing-box still runs it.
+		return fmt.Errorf("VLESS without TLS or Reality needs sing-box (Xray allows it only to a private address)")
+	}
 	if t := p.Transport.Type; t == "quic" && p.Protocol != profile.Hysteria2 {
 		return fmt.Errorf("transport %q is not supported by Xray", t)
 	}
@@ -309,4 +313,14 @@ func splitComma(s string) []string {
 		}
 	}
 	return out
+}
+
+// localAddress reports whether host is a loopback or private IP or "localhost".
+func localAddress(host string) bool {
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && (ip.IsLoopback() || ip.IsPrivate())
 }
