@@ -22,19 +22,19 @@ Keyway is a free, open-source, native macOS app for people who use **Xray-core (
 
 ## Download and use
 
-1. Download `Keyway-<version>-macOS.zip` from the [latest release](https://github.com/arminsameti/keyway/releases/latest) and unzip it.
-2. Drag **Keyway.app** into Applications and open it. It needs macOS 14 Sonoma or later, on Apple silicon or Intel (universal build, about 12 MB).
+1. Download `Keyway-<version>-macOS.dmg` from the [latest release](https://github.com/arminsameti/Keyway/releases/latest) (a `.zip` of the same app is there too).
+2. Open the disk image and drag **Keyway** onto the **Applications** shortcut, then open it. It needs macOS 14 Sonoma or later, on Apple silicon or Intel (universal build, about 14 MB).
 3. The builds are not notarized yet, so macOS may refuse the first launch. Right-click the app, choose **Open**, then confirm. If that still fails, run `xattr -dr com.apple.quarantine /Applications/Keyway.app` once.
 4. Follow the three onboarding steps: download an engine, add servers, connect.
 
-Check the download against the `.sha256` file on the release page. Keyway lives in the menu bar, so you can connect, switch server and toggle the system proxy without opening the window.
+Check the download against `SHA256SUMS.txt` on the release page. Keyway lives in the menu bar, so you can connect, switch server and toggle the system proxy without opening the window.
 
 ## Features
 
 ### Native and fast
 
 - **A real Mac app:** SwiftUI interface, menu bar controls, light and dark mode, keyboard shortcuts, VoiceOver labels. It is not a web page in a wrapper.
-- **Light on resources:** a small Swift app plus a Go backend. The universal download is about 12 MB.
+- **Light on resources:** a small Swift app plus a Go backend. The universal download is about 14 MB.
 - **Fast to use:** paste links from the clipboard, test latency of every server through its real engine, and let **auto-select fastest** pick the best one. It switches only when the current server is dead or clearly slower, so it never flaps between two similar servers.
 
 <p align="center">
@@ -141,7 +141,7 @@ CI (`.github/workflows/ci.yml`) runs gofmt, vet, the smoke test and the Swift bu
 
 ### Release
 
-Push a tag like `v0.2.0` (`git tag v0.2.0 && git push origin v0.2.0`). `.github/workflows/release.yml` builds the universal app on macOS, zips it with a SHA-256 file and publishes a GitHub release.
+Push a tag like `v0.2.0` (`git tag v0.2.0 && git push origin v0.2.0`). `.github/workflows/release.yml` builds the universal app on macOS, packages it as a DMG and a zip with a SHA-256 file, and publishes a GitHub release.
 
 ### Layout
 

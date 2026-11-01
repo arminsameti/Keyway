@@ -19,9 +19,11 @@ jobs:
       - run: make app VERSION="$GITHUB_REF_NAME"
       - name: Package
         run: |
+          make dmg VERSION="$GITHUB_REF_NAME"
+          mv "dist/Keyway-${GITHUB_REF_NAME}.dmg" "Keyway-${GITHUB_REF_NAME}-macOS.dmg"
           ditto -c -k --keepParent dist/Keyway.app "Keyway-${GITHUB_REF_NAME}-macOS.zip"
-          shasum -a 256 "Keyway-${GITHUB_REF_NAME}-macOS.zip" > "Keyway-${GITHUB_REF_NAME}-macOS.zip.sha256"
+          shasum -a 256 Keyway-*.dmg Keyway-*.zip > SHA256SUMS.txt
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" Keyway-*.zip Keyway-*.sha256 --generate-notes --title "Keyway $GITHUB_REF_NAME"
+        run: gh release create "$GITHUB_REF_NAME" Keyway-*.dmg Keyway-*.zip SHA256SUMS.txt --generate-notes --title "Keyway $GITHUB_REF_NAME"
