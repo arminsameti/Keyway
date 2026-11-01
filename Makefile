@@ -4,7 +4,7 @@ BIN     := bin/keywayd
 # Separate path: go build refuses to overwrite a lipo'd fat binary.
 UNIBIN  := bin/keywayd-universal
 
-.PHONY: build vet lint smoke run app universal snapshots clean
+.PHONY: build vet lint smoke run app dmg universal snapshots clean
 build:
 	@mkdir -p bin
 	go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/keywayd
@@ -51,6 +51,15 @@ app: universal
 	codesign --force --sign - $(APP)/Contents/MacOS/Keyway
 	codesign --force --sign - $(APP)
 	codesign --verify --strict $(APP)
+
+# Drag-to-Applications disk image of dist/Keyway.app: dist/Keyway-<version>.dmg
+dmg: app
+	rm -rf dist/dmg
+	mkdir -p dist/dmg
+	cp -R $(APP) dist/dmg/
+	ln -s /Applications dist/dmg/Applications
+	hdiutil create -volname Keyway -srcfolder dist/dmg -ov -format UDZO dist/Keyway-$(VERSION).dmg
+	rm -rf dist/dmg
 
 # Render every screen with the mockups' sample data, light and dark, to
 # dist/snapshots/*.png (offscreen; needs no Screen Recording permission).
