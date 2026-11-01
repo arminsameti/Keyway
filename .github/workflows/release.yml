@@ -1,0 +1,27 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  app:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-go@v5
+        with: { go-version: 'stable' }
+      - name: Stamp the version
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $v" -c "Set :CFBundleVersion $v" native/Info.plist
+      - run: make app VERSION="$GITHUB_REF_NAME"
+      - name: Package
+        run: |
+          ditto -c -k --keepParent dist/Keyway.app "Keyway-${GITHUB_REF_NAME}-macOS.zip"
+          shasum -a 256 "Keyway-${GITHUB_REF_NAME}-macOS.zip" > "Keyway-${GITHUB_REF_NAME}-macOS.zip.sha256"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" Keyway-*.zip Keyway-*.sha256 --generate-notes --title "Keyway $GITHUB_REF_NAME"

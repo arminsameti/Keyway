@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Add Servers sheet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:#0064D2}a:hover{color:#004FA6}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 900px; height: 720px; box-sizing: border-box; position: relative; overflow: hidden; border-radius: 12px; border: 1px solid #C9C9CE; background: #E9E9EC; font-family: -apple-system, 'SF Pro Text', system-ui, 'Helvetica Neue', sans-serif; font-size: 13px; color: #1D1D1F; -webkit-font-smoothing: antialiased">
+  <!-- dimmed window behind -->
+  <div aria-hidden="true" style="position: absolute; inset: 0; display: flex">
+    <div style="width: 180px; background: #DEDEE2; border-right: 1px solid #D0D0D5"></div>
+    <div style="flex: 1; display: flex; flex-direction: column">
+      <div style="height: 52px; border-bottom: 1px solid #D8D8DC; background: #EDEDF0"></div>
+      <div style="flex: 1; background: #EFEFF1"></div>
+    </div>
+  </div>
+
+  <!-- Sheet -->
+  <div role="dialog" aria-modal="true" aria-labelledby="sheetTitle" style="position: absolute; left: 160px; top: 52px; width: 580px; background: #FFFFFF; border-radius: 0 0 12px 12px; border: 1px solid #CFCFD4; border-top: 0; box-shadow: 0 18px 50px rgba(0,0,0,0.25); display: flex; flex-direction: column; box-sizing: border-box">
+    <div style="padding: 20px 22px 0; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <h2 id="sheetTitle" style="margin: 0; font-size: 15px; font-weight: 700">Add Servers</h2>
+        <p style="margin: 0; font-size: 12px; color: #6E6E73; line-height: 1.4">Paste share links, one per line. An https:// link is added as a subscription that refreshes on its own.</p>
+      </div>
+      <div role="tablist" aria-label="Import method" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 2px; background: #EDEDF0; border-radius: 8px">
+        <button role="tab" aria-selected="true" style="height: 24px; border: 0; border-radius: 6px; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,0.15); font-size: 12px; font-weight: 600; color: #1D1D1F">Paste Links</button>
+        <button role="tab" aria-selected="false" style="height: 24px; border: 0; border-radius: 6px; background: transparent; font-size: 12px; color: #1D1D1F">Subscription URL</button>
+        <button role="tab" aria-selected="false" style="height: 24px; border: 0; border-radius: 6px; background: transparent; font-size: 12px; color: #1D1D1F">File or QR Image</button>
+      </div>
+      <label style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 12px; font-weight: 600">Links</span>
+        <textarea aria-label="Share links" style="height: 120px; resize: none; box-sizing: border-box; padding: 8px 10px; border-radius: 7px; border: 2px solid #79A8E8; outline: none; font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px; line-height: 1.6; color: #1D1D1F; white-space: pre">vless://5c1e…@fra1.example.net:443?security=reality&amp;sni=www.example.com#Frankfurt%2001
+trojan://••••••@hel.example.net:443?sni=hel.example.net#Helsinki
+tuic://••••••@sgp.example.net:443?congestion_control=bbr#Singapore
+wireguard://••••••@wg.example.org:51820?address=10.7.0.2/32#Home%20WG
+https://sub.example.net/api/v1/client/[YOUR TOKEN]
+ssr://bG9uZy1sZWdhY3ktbGluay4uLg</textarea>
+      </label>
+    </div>
+
+    <!-- Preview -->
+    <div style="padding: 14px 22px 0; display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline">
+        <span style="font-size: 12px; font-weight: 600">Found</span>
+        <span style="font-size: 11px; color: #6E6E73">4 servers · 1 subscription · 1 skipped</span>
+      </div>
+      <ul style="margin: 0; padding: 4px; list-style: none; border: 1px solid #E5E5EA; border-radius: 9px; display: flex; flex-direction: column">
+        <li style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#1A7F37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Ready"><path d="m3 8.5 3 3 7-7"></path></svg>
+          <span style="flex: 1">Frankfurt 01</span><span style="font-size: 12px; color: #48484D">VLESS · Reality</span>
+        </li>
+        <li style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-top: 1px solid #F0F0F2">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#1A7F37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Ready"><path d="m3 8.5 3 3 7-7"></path></svg>
+          <span style="flex: 1">Helsinki</span><span style="font-size: 12px; color: #48484D">Trojan · TCP</span>
+        </li>
+        <li style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-top: 1px solid #F0F0F2">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#1A7F37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Ready"><path d="m3 8.5 3 3 7-7"></path></svg>
+          <span style="flex: 1">Singapore</span><span style="font-size: 12px; color: #48484D">TUIC v5 · QUIC · uses sing-box</span>
+        </li>
+        <li style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-top: 1px solid #F0F0F2">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#1A7F37" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Ready"><path d="m3 8.5 3 3 7-7"></path></svg>
+          <span style="flex: 1">Home WG</span><span style="font-size: 12px; color: #48484D">WireGuard · UDP</span>
+        </li>
+        <li style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-top: 1px solid #F0F0F2">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#0064D2" stroke-width="1.5" stroke-linecap="round" role="img" aria-label="Subscription"><path d="M3.5 11.5a1 1 0 1 0 0 .01M3 7.5a5.5 5.5 0 0 1 5.5 5.5M3 3a10 10 0 0 1 10 10"></path></svg>
+          <span style="flex: 1">sub.example.net</span><span style="font-size: 12px; color: #48484D">Subscription · base64, Clash or sing-box</span>
+        </li>
+        <li style="display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 8px; border-top: 1px solid #F0F0F2">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#A64B00" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Skipped"><path d="M8 2 14.5 13.5h-13z"></path><path d="M8 6.5v3M8 11.6v.01"></path></svg>
+          <span style="flex: 1; color: #48484D">Line 6 · ssr://</span><span style="font-size: 12px; color: #A64B00">ShadowsocksR is retired — skipped</span>
+        </li>
+      </ul>
+      <p style="margin: 2px 0 0; font-size: 11px; color: #6E6E73; line-height: 1.45">Recognizes VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP(S), Hysteria, Hysteria2, TUIC, WireGuard, AnyTLS, ShadowTLS, NaiveProxy and SSH links, plus Clash YAML and sing-box JSON.</p>
+    </div>
+
+    <!-- Footer -->
+    <div style="display: flex; align-items: center; gap: 8px; padding: 18px 22px 18px">
+      <a href="NewServer.dc.html" style="height: 28px; padding: 0 12px; border-radius: 7px; border: 1px solid #D5D5DA; background: #FFFFFF; font-size: 13px; color: #1D1D1F; text-decoration: none; display: flex; align-items: center; box-sizing: border-box">Enter Manually…</a>
+      <span style="flex: 1"></span>
+      <a href="Main.dc.html" style="height: 28px; padding: 0 14px; border-radius: 7px; border: 1px solid #D5D5DA; background: #FFFFFF; font-size: 13px; color: #1D1D1F; text-decoration: none; display: flex; align-items: center; box-sizing: border-box">Cancel</a>
+      <a href="Main.dc.html" style="height: 28px; padding: 0 14px; border-radius: 7px; border: 1px solid {{accent}}; background: {{accent}}; font-size: 13px; font-weight: 600; color: #FFFFFF; text-decoration: none; display: flex; align-items: center; box-sizing: border-box">Add 4 Servers &amp; 1 Subscription</a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#0064D2","options":["#0064D2","#6A3FC9","#B8308A","#1A7F37"]},"$preview":{"width":900,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#0064D2' };
+  }
+}
+</script>
+</body>
+</html>
