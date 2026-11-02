@@ -1,6 +1,14 @@
 package core
 
-import "testing"
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"testing"
+)
 
 func TestParseSHA256V2RayDgst(t *testing.T) {
 	const dgst = `MD5= ca74cedf54eeb7dbdf16fa16e9174d24
@@ -25,5 +33,32 @@ func TestV2RaySourceFiles(t *testing.T) {
 		if _, ok := V2RaySource.Files[name]; !ok {
 			t.Errorf("missing %s", name)
 		}
+	}
+}
+
+// v2ray-core marks most recent releases as pre-releases; asking for one stable
+// release must still look past them.
+func TestFetchReleasesLooksPastPrereleases(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
+		all := []string{`{"tag_name":"v5.56.0","prerelease":true}`, `{"tag_name":"v5.55.0","prerelease":true}`,
+			`{"tag_name":"v5.54.0","prerelease":true}`, `{"tag_name":"v5.53.0","prerelease":false}`}
+		if n < len(all) {
+			all = all[:n]
+		}
+		fmt.Fprintf(w, "[%s]", strings.Join(all, ","))
+	}))
+	defer ts.Close()
+	m, err := NewManager(t.TempDir(), V2RaySource)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.client, m.apiBase, m.allowHost = ts.Client(), ts.URL, func(string) bool { return true }
+	rs, err := m.FetchReleases(context.Background(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rs) != 1 || rs[0].Tag != "v5.53.0" {
+		t.Fatalf("got %+v", rs)
 	}
 }

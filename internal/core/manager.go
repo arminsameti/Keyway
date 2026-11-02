@@ -291,8 +291,10 @@ func (m *Manager) FetchReleases(ctx context.Context, limit int) ([]Release, erro
 	if limit <= 0 || limit > 50 {
 		limit = 10
 	}
-	// Over-fetch: filtered-out prereleases must not eat into the limit.
-	b, err := m.get(ctx, fmt.Sprintf("%s?per_page=%d", m.releasesURL(), limit*2), "application/vnd.github+json", maxAPIBody)
+	// Over-fetch: filtered-out prereleases must not eat into the limit. v2ray-core
+	// publishes most of its releases as prereleases, so a page scaled to the limit
+	// can hold no stable release at all.
+	b, err := m.get(ctx, fmt.Sprintf("%s?per_page=%d", m.releasesURL(), 30), "application/vnd.github+json", maxAPIBody)
 	if err != nil {
 		return nil, fmt.Errorf("list releases: %w", err)
 	}
