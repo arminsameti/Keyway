@@ -26,6 +26,9 @@ const (
 	defaultAPIBase = "https://api.github.com"
 	maxArchiveSize = 300 << 20
 	maxAPIBody     = 4 << 20
+	// releasePageSize and releasePages bound how far FetchReleases looks for stable releases.
+	releasePageSize = 5
+	releasePages    = 6
 )
 
 // ErrNotInstalled is returned when no usable engine binary exists.
@@ -291,27 +294,34 @@ func (m *Manager) FetchReleases(ctx context.Context, limit int) ([]Release, erro
 	if limit <= 0 || limit > 50 {
 		limit = 10
 	}
-	// Over-fetch: filtered-out prereleases must not eat into the limit.
-	b, err := m.get(ctx, fmt.Sprintf("%s?per_page=%d", m.releasesURL(), limit*2), "application/vnd.github+json", maxAPIBody)
-	if err != nil {
-		return nil, fmt.Errorf("list releases: %w", err)
-	}
-	var raw []ghRelease
-	if err := json.Unmarshal(b, &raw); err != nil {
-		return nil, fmt.Errorf("decode releases: %w", err)
-	}
+	// Filtered-out prereleases must not eat into the limit, and v2ray-core
+	// publishes most of its releases as prereleases, so keep paging until enough
+	// stable ones are found. Pages stay small: sing-box's release list is large.
 	installed := map[string]bool{}
 	for _, v := range m.Installed() {
 		installed[v] = true
 	}
 	var out []Release
-	for _, r := range raw {
-		if r.Draft || r.Prerelease || !ValidVersion(r.Tag) {
-			continue
+	for page := 1; page <= releasePages && len(out) < limit; page++ {
+		b, err := m.get(ctx, fmt.Sprintf("%s?per_page=%d&page=%d", m.releasesURL(), releasePageSize, page), "application/vnd.github+json", maxAPIBody)
+		if err != nil {
+			return nil, fmt.Errorf("list releases: %w", err)
 		}
-		r.Release.Installed = installed[r.Tag]
-		out = append(out, r.Release)
-		if len(out) == limit {
+		var raw []ghRelease
+		if err := json.Unmarshal(b, &raw); err != nil {
+			return nil, fmt.Errorf("decode releases: %w", err)
+		}
+		for _, r := range raw {
+			if r.Draft || r.Prerelease || !ValidVersion(r.Tag) {
+				continue
+			}
+			r.Release.Installed = installed[r.Tag]
+			out = append(out, r.Release)
+			if len(out) == limit {
+				break
+			}
+		}
+		if len(raw) < releasePageSize {
 			break
 		}
 	}
