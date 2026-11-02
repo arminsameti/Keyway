@@ -88,6 +88,11 @@ func (s *Settings) Normalize() {
 		}
 	}
 	s.DNS = dns
+	s.DNSMode = strings.ToLower(strings.TrimSpace(s.DNSMode))
+	if s.DNSMode == "" {
+		s.DNSMode = d.DNSMode
+	}
+	s.DNSDirect = strings.TrimSpace(s.DNSDirect)
 	for i := range s.Inbounds {
 		ib := &s.Inbounds[i]
 		ib.Tag = strings.TrimSpace(ib.Tag)
@@ -144,6 +149,7 @@ func (s Settings) Validate() error {
 			add("DNS entry %q must not contain whitespace", e)
 		}
 	}
+	s.validateDNS(add)
 
 	tags := map[string]bool{}
 	ports := map[int]string{}

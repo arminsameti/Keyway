@@ -389,7 +389,7 @@ func (s *Server) nodeConfig(w http.ResponseWriter, r *http.Request) {
 		failErr(w, err, http.StatusBadRequest)
 		return
 	}
-	ok(w, map[string]any{"engines": p.Engines, "configs": p.Configs})
+	ok(w, map[string]any{"engines": p.Engines, "configs": p.Configs, "dns": p.DNS})
 }
 
 func (s *Server) tunHelper(w http.ResponseWriter, r *http.Request) {

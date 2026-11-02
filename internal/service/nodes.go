@@ -277,11 +277,26 @@ func (s *Service) visibleSlots() []EngineSlot {
 	return out
 }
 
+// setDNS caches what the DNS settings amount to. Settings that do not parse
+// (Validate refuses them, so only a hand-edited file) count as the default.
+func (s *Service) setDNS(st models.Settings) {
+	plan, err := st.DNSPlan()
+	if err != nil {
+		plan = models.DNSPlan{Mode: models.DNSModeDefault}
+	}
+	s.dnsPlan.Store(&plan)
+}
+
+// engineList is the engines the planner may use: those that cannot honour the
+// DNS settings refuse every server, so it moves to one that can.
 func (s *Service) engineList() []engine.Engine {
 	slots := s.visibleSlots()
 	out := make([]engine.Engine, len(slots))
 	for i, sl := range slots {
 		out[i] = sl.Engine
+	}
+	if p := s.dnsPlan.Load(); p != nil {
+		out = engine.ForDNS(out, *p)
 	}
 	return out
 }

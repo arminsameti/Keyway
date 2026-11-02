@@ -72,6 +72,42 @@ connect_to "$VL_ID"
 via server-vless.log; ok "plain VLESS to a private address carried the request"
 disconnect
 
+echo "== DNS settings"
+# The real engines read each generated config (Xray -test, sing-box check) and carry the request.
+dns_preview() { api GET "/api/nodes/$SS_ID/config" | jget "$1"; }
+set_settings "s['enginePreference']='xray'; s['dnsMode']='secure'"
+connect_to "$SS_ID"
+LABEL="$(running_label)"; [ "$LABEL" = "Xray core" ] || fail "secure DNS: expected Xray core, got '$LABEL'"
+[ "$(fetch)" = "e2e-ok" ] || fail "page not fetched with secure DNS on Xray"
+[ "$(dns_preview "'dns-in' in d['configs'][0] and d['dns'][0].startswith('Secure DNS')")" = True ] || fail "preview lacks the secure DNS"
+ok "secure DNS on Xray: config accepted, traffic flows, preview shows it"
+disconnect
+# Xray would read tls:// as a plain UDP server and say nothing: the planner must pick sing-box.
+set_settings "s['dnsMode']='custom'; s['dns']=['tls://9.9.9.9']"
+connect_to "$SS_ID"
+LABEL="$(running_label)"; [ "$LABEL" = "sing-box" ] || fail "DNS over TLS: expected sing-box, got '$LABEL'"
+[ "$(fetch)" = "e2e-ok" ] || fail "page not fetched with DNS over TLS on sing-box"
+[ "$(dns_preview "'tls' in d['configs'][0] and d['dns'][0].startswith('Custom')")" = True ] || fail "preview lacks the custom DNS"
+ok "DNS over TLS moved from Xray to sing-box"
+disconnect
+# A direct resolver for the bypassed domains, on both engines (custom routing: no geo data needed).
+for PREF in xray sing-box; do
+  set_settings "s['enginePreference']='$PREF'; s['routingMode']='custom'; s['directSites']='domain:direct.invalid'; s['proxySites']=''
+s['dnsMode']='secure'; s['dnsDirect']='223.5.5.5'"
+  connect_to "$SS_ID"
+  [ "$(fetch)" = "e2e-ok" ] || fail "page not fetched with a direct DNS resolver on $PREF"
+  [ "$(dns_preview "'223.5.5.5' in d['configs'][0] and 'bypassed domains' in d['dns'][0]")" = True ] || fail "preview lacks the direct resolver on $PREF"
+  disconnect
+done
+ok "direct resolver accepted by both engines"
+BAD="$(api GET /api/settings | python3 -c "
+import sys,json
+d=json.load(sys.stdin); s=d.get('settings',d); s['dnsMode']='custom'; s['dns']=['not a server']
+print(json.dumps(s))")"
+[ "$(api POST /api/settings "$BAD" | jget "d.get('ok')")" = False ] || fail "a malformed DNS server must be refused"
+ok "malformed DNS server refused"
+set_settings "s['dnsMode']='default'; s['dnsDirect']=''; s['dns']=['1.1.1.1','8.8.8.8','localhost']; s['routingMode']='global'"
+
 echo "== chain: Shadowsocks -> VLESS"
 CH="$(api POST /api/nodes "{\"name\":\"E2E chain\",\"chain\":[\"$SS_ID\",\"$VL_ID\"]}" | jget "d['node']['id']")"
 : > "$ROOT/server-ss1.log"

@@ -22,13 +22,24 @@ func BuildConfig(seg profile.Segment, s models.Settings) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	plan, err := s.DNSPlan()
+	if err != nil {
+		return nil, err
+	}
+	if err := SupportsDNS(plan); err != nil {
+		return nil, err
+	}
 	dns := s.DNS
 	if len(dns) == 0 {
 		dns = defaultDNS
 	}
+	servers := make([]any, len(dns))
+	for i, d := range dns {
+		servers[i] = d
+	}
 	cfg := &Config{
 		Log: LogConfig{LogLevel: s.LogLevel},
-		DNS: &DNS{Servers: dns},
+		DNS: &DNS{Servers: servers},
 		Outbounds: append(outs,
 			Outbound{Tag: "direct", Protocol: "freedom"},
 			Outbound{Tag: "block", Protocol: "blackhole"}),
@@ -47,6 +58,7 @@ func BuildConfig(seg profile.Segment, s models.Settings) (*Config, error) {
 		return nil, err
 	}
 	cfg.Routing = Routing{DomainStrategy: "IPIfNonMatch", Rules: rules}
+	applyDNS(cfg, plan)
 	if seg.Stats != nil {
 		addStats(cfg, seg.Stats.Port)
 	}
