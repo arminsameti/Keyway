@@ -18,7 +18,7 @@ Built in SwiftUI. No Electron, no web view, no config files.
 
 </div>
 
-Keyway is a free, open-source, native macOS app for people who use **Xray-core (VLESS, VMess, Trojan, Reality)** or **sing-box (Hysteria2, TUIC, WireGuard, OpenVPN)**, optionally **V2Ray core** or **Tor**, and want a Mac client that feels like a Mac app. It downloads and manages the engines for you, picks the right one for every server, and lets you build **multi-hop proxy chains** across protocols. If you are looking for a V2RayX, V2rayU or v2rayN alternative on macOS, this is it.
+Keyway is a free, open-source, native macOS app for people who use **Xray-core (VLESS, VMess, Trojan, Reality)** or **sing-box (Hysteria2, TUIC, WireGuard, OpenVPN)**, optionally **V2Ray core**, **Mihomo** or **Tor**, and want a Mac client that feels like a Mac app. It downloads and manages the engines for you, picks the right one for every server, and lets you build **multi-hop proxy chains** across protocols. If you are looking for a V2RayX, V2rayU or v2rayN alternative on macOS, this is it.
 
 ## Download and use
 
@@ -56,10 +56,13 @@ Route traffic through several servers in a row, and mix protocols freely, for ex
 | **Xray-core** | VLESS (Reality, Vision, XHTTP), VMess, Trojan, Shadowsocks (incl. 2022), SOCKS5, HTTP, WireGuard, Hysteria2 |
 | **sing-box** | Hysteria and Hysteria2, TUIC v5, AnyTLS, ShadowTLS, NaiveProxy, WireGuard, OpenVPN, plus VLESS, VMess, Trojan and Shadowsocks |
 | **V2Ray core** (optional) | VLESS over TLS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP |
+| **Mihomo** (optional) | VLESS (Reality, Vision), VMess, Trojan, Shadowsocks (incl. 2022), Hysteria2, TUIC v5, AnyTLS, WireGuard, SOCKS5, HTTP |
 
 Keyway downloads Xray and sing-box from their official GitHub releases, verifies their checksums, keeps them updated, and runs whichever engine supports each server. When both can, you choose the preference. Servers that need a specific engine (for example plain VLESS without TLS, which current Xray refuses) are moved to the right one automatically.
 
 V2Ray core is optional. Download it in **Settings › Engines** and choose **Prefer V2Ray core** to run the servers it supports through v2ray-core itself. Keyway only uses it when every setting of a server takes effect there, so Reality, Vision, pinned certificates and servers with a TLS fingerprint stay on Xray or sing-box.
+
+Mihomo (the Clash.Meta core) is optional too: download it in **Settings › Engines** and choose **Prefer Mihomo**. It is GPL-3.0 software that Keyway only downloads and runs as a separate program; Keyway does not link or bundle it. Releases come from [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) and are checked against the SHA-256 GitHub reports for them, since Mihomo publishes no checksum file; its geo data comes from MetaCubeX/meta-rules-dat and is checked the same way, and Mihomo is never allowed to download anything itself. Keyway only runs a server on Mihomo when every setting of it was checked to work there. XHTTP, mKCP, QUIC transport, Hysteria v1, ShadowTLS, NaiveProxy, SSH, OpenVPN, Tor, Cloudflare WARP reserved bytes, TLS fragmentation and chains with a UDP hop stay on Xray or sing-box, and so do the TUN interface and per-app rules: with those on, sing-box serves your apps in front of Mihomo.
 
 ### Tor (optional)
 

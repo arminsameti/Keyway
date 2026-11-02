@@ -331,6 +331,7 @@ struct EnginesPane: View {
                         Text("Prefer Xray core").tag("xray")
                         Text("Prefer sing-box").tag("sing-box")
                         Text("Prefer V2Ray core").tag("v2ray")
+                        Text("Prefer Mihomo").tag("mihomo")
                     }.labelsHidden().fixedSize()
                 }
                 CardRow(label: "Download an engine when a new server needs it") {
@@ -418,7 +419,7 @@ struct EngineCard: View {
         HStack(alignment: .top, spacing: 14) {
             let badge = Palette.engineBadge(engine.name)
             RoundedRectangle(cornerRadius: 9).fill(badge.bg).frame(width: 36, height: 36)
-                .overlay(Text(engine.name == "xray" ? "X" : engine.name == "v2ray" ? "V2" : "sb").font(.system(size: 13, weight: .heavy)).foregroundStyle(badge.fg))
+                .overlay(Text(engine.name == "xray" ? "X" : engine.name == "v2ray" ? "V2" : engine.name == "mihomo" ? "M" : "sb").font(.system(size: 13, weight: .heavy)).foregroundStyle(badge.fg))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {

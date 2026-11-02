@@ -41,6 +41,7 @@ enum Palette {
     static let xrayBadge = (fg: c(D.xrayBadgeText), bg: c(D.xrayBadgeFill))
     static let singBoxBadge = (fg: c(D.singBoxBadgeText), bg: c(D.singBoxBadgeFill))
     static let v2rayBadge = (fg: c(D.v2rayBadgeText), bg: c(D.v2rayBadgeFill))
+    static let mihomoBadge = (fg: c(D.mihomoBadgeText), bg: c(D.mihomoBadgeFill))
 
     static func latency(_ ms: Int) -> (fg: Color, bg: Color) {
         switch LatencyClass(ms: ms) {
@@ -55,6 +56,7 @@ enum Palette {
         switch engine {
         case "sing-box": singBoxBadge
         case "v2ray": v2rayBadge
+        case "mihomo": mihomoBadge
         default: xrayBadge
         }
     }
