@@ -35,8 +35,11 @@ type LogConfig struct {
 	LogLevel string `json:"loglevel"`
 }
 
+// DNS lists its servers as plain strings, or DNSServer objects for a resolver
+// that answers for some domains only.
 type DNS struct {
-	Servers []string `json:"servers"`
+	Servers []any  `json:"servers"`
+	Tag     string `json:"tag,omitempty"` // inbound tag of Xray's own queries, for routing
 }
 
 type Routing struct {

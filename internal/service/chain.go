@@ -433,6 +433,22 @@ func (s *Service) PlanChain(ids []string) (ChainPlan, error) {
 type ConfigPreview struct {
 	Engines []string `json:"engines"` // display name per process
 	Configs []string `json:"configs"` // JSON text per process
+	DNS     []string `json:"dns"`     // how names resolve per process; "" where the process serves no lookups
+}
+
+// previewDNS says how the process of a segment resolves names. Only the
+// segment that serves the user does, and only the engines that run a DNS
+// block of their own (Tor hands the lookups to its exit).
+func previewDNS(st models.Settings, engineName string, seg profile.Segment) string {
+	switch engineName {
+	case engine.NameXray, engine.NameSingBox, engine.NameV2Ray:
+	default:
+		return ""
+	}
+	if seg.Listen != nil {
+		return ""
+	}
+	return st.EffectiveDNS(engineName)
 }
 
 // PreviewConfig renders a node's configuration without starting anything.
@@ -468,6 +484,7 @@ func (s *Service) PreviewConfig(id string) (ConfigPreview, error) {
 		}
 		out.Engines = append(out.Engines, pl.steps[k].Engine.DisplayName())
 		out.Configs = append(out.Configs, string(cfg))
+		out.DNS = append(out.DNS, previewDNS(d.Settings, pl.steps[k].Engine.Name(), seg))
 	}
 	return out, nil
 }

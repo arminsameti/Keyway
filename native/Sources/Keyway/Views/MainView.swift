@@ -535,6 +535,10 @@ struct ConfigSheet: View {
             } else if let e = preview.engines.first {
                 Text("Runs on \(e)").font(.system(size: 12)).foregroundStyle(Palette.secondary)
             }
+            if preview.dns.indices.contains(index), !preview.dns[index].isEmpty {
+                Text("DNS · \(preview.dns[index])").font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
             ScrollView {
                 Text(preview.configs.indices.contains(index) ? preview.configs[index] : "")
                     .font(.system(size: 11, design: .monospaced)).textSelection(.enabled)

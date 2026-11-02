@@ -113,9 +113,37 @@ func SupportsSegment(hops []profile.Profile, hasUpstream bool) error {
 	return xray.SupportsSegment(hops, hasUpstream)
 }
 
+// SupportsDNS reports whether v2ray-core can honour the DNS settings, with the
+// reason if not. It reads what it does not know as a plain UDP server and says
+// nothing, so only what was seen to work is allowed: IP addresses, localhost
+// and DNS over HTTPS at an IP address. It cannot do DNS over TLS, cannot look
+// up the host name of a DoH server, and ignores the DNS inbound tag and the
+// domain-specific resolver that a direct resolver needs.
+func SupportsDNS(p models.DNSPlan) error {
+	for _, d := range p.Servers {
+		switch {
+		case d.Kind == models.DNSTLS:
+			return fmt.Errorf("V2Ray core cannot do DNS over TLS (%s); Xray core or sing-box can", d)
+		case d.Kind == models.DNSHTTPS && !d.IsIP():
+			return fmt.Errorf("V2Ray core cannot look up the host name of a DoH server (%s); use its IP address, or Xray core or sing-box", d)
+		}
+	}
+	if p.Direct != nil {
+		return fmt.Errorf("V2Ray core cannot keep a separate direct DNS server; Xray core or sing-box can")
+	}
+	return nil
+}
+
 // BuildConfig renders the full client configuration of one segment.
 func BuildConfig(seg profile.Segment, s models.Settings) ([]byte, error) {
 	if err := SupportsSegment(seg.Hops, seg.Upstream != nil); err != nil {
+		return nil, err
+	}
+	plan, err := s.DNSPlan()
+	if err != nil {
+		return nil, err
+	}
+	if err := SupportsDNS(plan); err != nil {
 		return nil, err
 	}
 	cfg, err := xray.BuildConfig(seg, s)
@@ -149,8 +177,20 @@ func render(cfg *xray.Config) ([]byte, error) {
 	return b, nil
 }
 
-// adapt moves chain dialing from Xray's sockopt to v2ray-core's proxySettings.
+// adapt moves chain dialing from Xray's sockopt to v2ray-core's proxySettings,
+// and drops the DNS inbound tag with the rule that pins it: v2ray-core ignores
+// the tag, and its DNS queries take the default route, which is the proxy.
 func adapt(cfg *xray.Config) {
+	if cfg.DNS != nil && cfg.DNS.Tag != "" {
+		cfg.DNS.Tag = ""
+		rules := []xray.Rule{}
+		for _, r := range cfg.Routing.Rules {
+			if len(r.InboundTag) != 1 || r.InboundTag[0] != xray.DNSTag {
+				rules = append(rules, r)
+			}
+		}
+		cfg.Routing.Rules = rules
+	}
 	for i := range cfg.Outbounds {
 		ob := &cfg.Outbounds[i]
 		if ob.StreamSettings == nil || ob.StreamSettings.Sockopt == nil {
@@ -165,7 +205,7 @@ func adapt(cfg *xray.Config) {
 var xrayOnlyKeys = map[string]bool{
 	"dialerProxy": true, "realitySettings": true, "xhttpSettings": true, "httpupgradeSettings": true,
 	"flow": true, "pinnedPeerCertSha256": true, "fragment": true,
-	"fingerprint": true, "multiMode": true, "authority": true,
+	"fingerprint": true, "multiMode": true, "authority": true, "skipFallback": true,
 }
 
 // refuseXrayKeys fails when the config holds an Xray-only key at any depth. That

@@ -84,7 +84,10 @@ type Settings struct {
 	ProxySites      string    `json:"proxySites"`
 	BlockedSites    string    `json:"blockedSites"`
 	DNS             []string  `json:"dns"`
-	LogLevel        string    `json:"logLevel"` // debug info warning error none
+	DNSMode         string    `json:"dnsMode"`   // default | system | secure | custom
+	DNSDirect       string    `json:"dnsDirect"` // optional resolver for bypassed domains, by IP
+	FakeIP          bool      `json:"fakeIp"`    // TUN: answer lookups with fake addresses
+	LogLevel        string    `json:"logLevel"`  // debug info warning error none
 	Mux             bool      `json:"mux"`
 	MuxConcurrency  int       `json:"muxConcurrency"`
 	AllowLAN        bool      `json:"allowLan"`
@@ -147,6 +150,7 @@ func DefaultSettings() Settings {
 		DirectSites:    "geosite:private, geosite:cn",
 		BlockedSites:   "geosite:category-ads-all",
 		DNS:            []string{"1.1.1.1", "8.8.8.8", "localhost"},
+		DNSMode:        DNSModeDefault,
 		LogLevel:       "warning",
 		MuxConcurrency: 8,
 		Sniffing:       true,

@@ -163,6 +163,13 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 		cfg.Route.Rules = []Rule{}
 		return cfg, nil
 	}
+	plan, err := s.DNSPlan()
+	if err != nil {
+		return nil, err
+	}
+	if err := applyDNS(cfg, plan, s, seg.TUN != nil); err != nil {
+		return nil, err
+	}
 	var exit profile.Profile
 	if len(seg.Hops) > 0 {
 		exit = seg.Hops[len(seg.Hops)-1]

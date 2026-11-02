@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import KeywayCore
 
-/// The Settings scene: General, Proxy, Routing, Engines, Advanced.
+/// The Settings scene: General, Proxy, Routing, DNS, Engines, Advanced.
 struct SettingsView: View {
     @State var tab = "general"
 
@@ -11,6 +11,7 @@ struct SettingsView: View {
             pane { GeneralPane() }.tabItem { Label("General", systemImage: "gearshape") }.tag("general")
             pane { ProxyPane() }.tabItem { Label("Proxy", systemImage: "server.rack") }.tag("proxy")
             pane { RoutingForm() }.tabItem { Label("Routing", systemImage: "arrow.triangle.branch") }.tag("routing")
+            pane { DNSPane() }.tabItem { Label("DNS", systemImage: "network") }.tag("dns")
             pane { EnginesPane() }.tabItem { Label("Engines", systemImage: "cpu") }.tag("engines")
             pane { AdvancedPane() }.tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }.tag("advanced")
         }
@@ -99,7 +100,6 @@ struct ProxyPane: View {
 
 struct AdvancedPane: View {
     @Environment(AppModel.self) private var model
-    @State private var dns = ""
     @State private var apiPort = ""
 
     var body: some View {
@@ -109,15 +109,6 @@ struct AdvancedPane: View {
                     Picker("Log level", selection: settingBinding(model, \.logLevel)) {
                         ForEach(["debug", "info", "warning", "error", "none"], id: \.self) { Text($0.capitalized).tag($0) }
                     }.labelsHidden().fixedSize()
-                }
-                CardRow(label: "DNS servers (Xray)") {
-                    TextField("DNS servers", text: $dns).frame(width: 260).labelsHidden()
-                        .font(.system(size: 12, design: .monospaced))
-                        .onSubmit {
-                            var s = model.settings
-                            s.dns = dns.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                            model.save(s)
-                        }
                 }
             }
             CardSection(title: "App", footnote: "Changing the API port takes effect after Keyway restarts.") {
@@ -137,7 +128,6 @@ struct AdvancedPane: View {
         }
         .frame(maxWidth: 680)
         .onAppear {
-            dns = model.settings.dns.joined(separator: ", ")
             apiPort = String(model.settings.apiPort)
         }
     }

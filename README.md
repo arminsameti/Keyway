@@ -85,6 +85,7 @@ Share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `tuic
 
 - **Routing modes:** global, bypass private and Chinese addresses, or your own **rule sets** (domains, `geosite`, `geoip`, IP ranges, ports, programs). Import rules from Clash or v2rayN and test which rule a destination hits.
 - **Per-app rules:** proxy, bypass or block by application, for example `app:/Applications/Slack.app`.
+- **DNS:** in **Settings › DNS** choose how names resolve: the original default, the system resolver, built-in secure DNS (DNS over HTTPS through the proxy), or your own servers (IP, `https://` DoH, `tls://` DoT). An optional direct resolver answers for the domains your routing bypasses, and FakeIP is available in TUN mode. See [DNS](#dns).
 - **TUN mode:** capture all traffic on the Mac, not only apps that respect the system proxy. See [TUN mode](#tun-mode-and-administrator-rights).
 - **System proxy** is set on connect and restored on disconnect, quit or after a crash.
 - **Per-server overrides:** multiplexing, SNI, uTLS fingerprint and TLS fragmentation.
@@ -94,6 +95,18 @@ Share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `tuic
 ### Private by design
 
 Everything stays on your Mac in `~/.keyway` (owner-only permissions). Keyway sends nothing anywhere except the engine downloads, the subscription URLs you add, and a once-a-day request to GitHub for the newest Keyway release number. That update check carries nothing that identifies you or your Mac, and you can turn it off in Settings › General › Updates. The local API only listens on `127.0.0.1` and is protected by a per-launch token. Keyway is open source under the MIT license, so you can read exactly what it does.
+
+### DNS
+
+By default nothing changes: Xray asks the servers it always did (`1.1.1.1, 8.8.8.8, localhost`) and sing-box asks the system resolver. Under **Settings › DNS** you can instead pick:
+
+- **System:** every engine asks macOS.
+- **Secure DNS:** Cloudflare and Google over HTTPS, sent through your proxy server.
+- **Custom servers:** your own list, also sent through the proxy. Entries are an IP address, `localhost`, `https://host/path` (DoH) or `tls://host` (DoT).
+- **Direct resolver (optional):** an IP such as `223.5.5.5` that answers for the domains your routing sends direct, reached without the proxy.
+- **FakeIP (TUN only):** lookups get placeholder addresses and the real name goes to the proxy.
+
+The engines differ, so Keyway checks before it picks one. Xray core and V2Ray core cannot do DNS over TLS (they read `tls://1.1.1.1` as a plain UDP server and say nothing), so such a server runs on sing-box. V2Ray core also cannot look up the host name of a DoH server or keep a direct resolver, and cannot pin its queries to the proxy beyond the default route, so those settings move servers to Xray core or sing-box. sing-box has no failover between DNS servers and asks only the first. The config preview shows the effective DNS of each process.
 
 ### TUN mode and administrator rights
 
