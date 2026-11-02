@@ -177,6 +177,9 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var proxySites = ""
     public var blockedSites = ""
     public var dns: [String] = []
+    public var dnsMode = "default" // default | system | secure | custom
+    public var dnsDirect = ""
+    public var fakeIp = false
     public var logLevel = "warning"
     public var mux = false
     public var muxConcurrency = 8
@@ -568,9 +571,11 @@ public struct CustomConfig: Codable, Equatable, Hashable, Sendable {
 public struct ConfigPreview: Codable, Equatable, Identifiable, Sendable {
     public var engines: [String]
     public var configs: [String]
+    /// How names resolve in each process; empty where the process serves no lookups.
+    public var dns: [String] = []
     public var id: String { engines.joined(separator: "+") + String(configs.joined().hashValue) }
     public var title = ""
-    enum CodingKeys: String, CodingKey { case engines, configs }
+    enum CodingKeys: String, CodingKey { case engines, configs, dns }
 }
 
 /// Capture all traffic with a virtual interface (needs administrator rights).

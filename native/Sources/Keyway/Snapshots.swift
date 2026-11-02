@@ -55,6 +55,12 @@ enum Snapshots {
                    CGSize(width: 760, height: 720), appearance, dir)
             render(SettingsView(tab: "engines").environment(connected), "settings-engines-\(suffix)", CGSize(width: 760, height: 640), appearance, dir)
             render(SettingsView(tab: "general").environment(connected), "settings-general-\(suffix)", CGSize(width: 760, height: 640), appearance, dir)
+            let dnsModel = AppModel(); dnsModel.loadSample(connected: true)
+            var dnsSettings = dnsModel.settings
+            dnsSettings.dnsMode = "custom"; dnsSettings.dnsDirect = "223.5.5.5"
+            dnsSettings.dns = ["https://1.1.1.1/dns-query", "tls://9.9.9.9"]
+            dnsModel.save(dnsSettings) // no backend in a snapshot: this only sets the sample
+            render(SettingsView(tab: "dns").environment(dnsModel), "settings-dns-\(suffix)", CGSize(width: 760, height: 640), appearance, dir)
             render(OnboardingView().environment(onboarding), "onboarding-\(suffix)", CGSize(width: 720, height: 640), appearance, dir)
         }
     }
