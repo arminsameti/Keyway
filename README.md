@@ -144,9 +144,13 @@ Backend flags: `-port`, `-data-dir`, `-version`. The API token is written to `~/
 ```sh
 make vet && make lint
 make smoke            # start the backend and call the API
+make e2e              # real engines and connections through local fixture servers
+make e2e-tor          # real Tor (needs the Tor network; slow, not a merge gate)
 ```
 
-CI (`.github/workflows/ci.yml`) runs gofmt, vet, the smoke test and the Swift build on every push and pull request.
+There are no unit tests; the end-to-end scripts are the tests. `make e2e` downloads sing-box and Xray through Keyway's own download code, runs sing-box as a fixture server on loopback, then connects through Shadowsocks (on both engines), plain VLESS and a two-hop chain. It fetches a local page through each and checks the server's log, so a request that bypasses the server fails. It also runs a real latency test and checks that disconnect leaves nothing running. `make e2e-tor` checks that the exit is Tor, loads an `.onion` page, runs a proxy-then-Tor chain and turns Tor off. Both use random ports and a temporary data directory, so they never touch a Keyway you have installed. `make lint` needs [golangci-lint](https://golangci-lint.run) v1.
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: gofmt, vet, golangci-lint and the smoke test; a full `make app` build of the macOS bundle with architecture and signature checks; and `make e2e`. `e2e-tor.yml` runs the Tor test on pushes to `main`, pull requests and nightly, without blocking merges.
 
 ### Release
 
