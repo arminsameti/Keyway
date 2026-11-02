@@ -138,10 +138,3 @@ func preferredFirst(engines []Engine, pref string) []Engine {
 	}
 	return out
 }
-
-// Candidate returns the engine Select would choose, ignoring installation
-// state; used for display ("uses sing-box").
-func Candidate(p profile.Profile, pref string, engines []Engine) (Engine, error) {
-	e, err := Select(p, pref, engines, func(string) bool { return true })
-	return e, err
-}

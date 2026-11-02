@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -67,7 +68,7 @@ func (s *Service) nodeView(d models.AppData, n models.Node) NodeView {
 	}
 	v.Transport, v.Security, v.SNI, v.UDP = p.DisplayTransport(), p.DisplaySecurity(), p.DisplaySNI(), p.UDPBased()
 	v.RelaysUDP = profile.RelaysUDP(p)
-	e, err := engine.Candidate(p, d.Settings.EnginePreference, s.engineList())
+	e, err := runsOn(p, n.Overrides, d.Settings.EnginePreference, s.engineList(), s.installed)
 	if err != nil {
 		v.EngineReason = err.Error()
 		return v
@@ -294,6 +295,33 @@ func (s *Service) slot(name string) (EngineSlot, bool) {
 	return EngineSlot{}, false
 }
 
+// runsOn names the engine that will run a server: the one connecting picks, with
+// the node's overrides applied. An engine that still has to be downloaded is
+// named too, so the caller can say so.
+func runsOn(p profile.Profile, ov *profile.Overrides, pref string, engines []engine.Engine, installed func(string) bool) (engine.Engine, error) {
+	p, err := ov.Apply(p)
+	if err != nil {
+		return nil, err
+	}
+	e, err := engine.Select(p, pref, engines, installed)
+	var missing *engine.NotInstalledError
+	if errors.As(err, &missing) {
+		return e, nil
+	}
+	return e, err
+}
+
+// planShown is the plan connecting would use. Engines that still have to be
+// downloaded stay in it, so the caller can say so.
+func planShown(hops []profile.Profile, pref string, engines []engine.Engine, installed func(string) bool, final string) ([]engine.Step, error) {
+	steps, err := engine.PlanSegments(hops, pref, engines, installed, final)
+	var missing *engine.NotInstalledError
+	if errors.As(err, &missing) {
+		return steps, nil
+	}
+	return steps, err
+}
+
 func (s *Service) installed(name string) bool {
 	sl, ok := s.slot(name)
 	return ok && len(sl.Manager.Installed()) > 0
@@ -360,7 +388,8 @@ func (s *Service) fetchEnginesFor(nodes []models.Node) {
 		if err != nil {
 			continue
 		}
-		if e, err := engine.Candidate(p, d.Settings.EnginePreference, s.engineList()); err == nil && !s.installed(e.Name()) {
+		allInstalled := func(string) bool { return true }
+		if e, err := runsOn(p, n.Overrides, d.Settings.EnginePreference, s.engineList(), allInstalled); err == nil && !s.installed(e.Name()) {
 			need[e.Name()] = true
 		}
 	}
@@ -420,7 +449,7 @@ func (s *Service) chainView(d models.AppData, v NodeView) NodeView {
 		v.Error = err.Error()
 		return v
 	}
-	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true }, "")
+	steps, err := planShown(hops, d.Settings.EnginePreference, s.engineList(), s.installed, "")
 	if err != nil {
 		v.EngineReason = err.Error()
 		return v

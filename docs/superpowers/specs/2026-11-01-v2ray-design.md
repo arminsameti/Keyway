@@ -47,7 +47,9 @@ section 2 are.
 
 | Setting | Allowed |
 |---|---|
-| Protocols | VMess, Trojan, Shadowsocks (non-2022 ciphers), SOCKS, HTTP, VLESS |
+| Protocols | VMess, Trojan, Shadowsocks, SOCKS, HTTP, VLESS |
+| Shadowsocks ciphers | `aes-128-gcm`, `aes-256-gcm`, `chacha20-poly1305`, `chacha20-ietf-poly1305`, `none`, `plain` |
+| mKCP headers | none, `srtp`, `utp`, `wechat-video`, `dtls`, `wireguard` |
 | VLESS | `Security.Kind == "tls"`, empty `Flow`, `Encryption` empty or `none` |
 | Transports | `tcp`, `ws`, `grpc`, `h2`, `kcp` |
 | Security | `none` or `tls` |
@@ -57,7 +59,8 @@ Rejected, each with a reason naming the engine that can run it:
 - Reality, `Flow`, XHTTP, HTTPUpgrade, Shadowsocks 2022, WireGuard, Hysteria2, all sing-box-only protocols
 - Custom configs and Tor
 - `Security.PinSHA256` and `Security.Insecure`
-- `Transport.Authority` on gRPC
+- `Transport.Authority` on gRPC, and gRPC `multi` mode, which v2ray-core runs as plain gun
+- WebSocket paths with an `ed` query, which v2ray-core sends on literally instead of using early data
 - `Overrides.Fragment`
 - `Security.Fingerprint` or `Overrides.Fingerprint` set
 
@@ -77,7 +80,8 @@ pass Xray's TCP-stream rule (`kcp` is excluded).
 3. For each outbound with `sockopt.dialerProxy`, set `proxySettings` to that tag with `transportLayer: true`,
    and clear the sockopt.
 4. Refuse the config if it still contains an Xray-only key: `dialerProxy`, `realitySettings`,
-   `xhttpSettings`, `httpupgradeSettings`, `flow`, `pinnedPeerCertSha256` or `fragment`.
+   `xhttpSettings`, `httpupgradeSettings`, `flow`, `pinnedPeerCertSha256`, `fragment`, `fingerprint`, `multiMode`
+   or `authority`, when set to a non-empty value.
 
 Step 4 walks the marshalled JSON, so it also catches these keys if the Xray builder later emits them on a new
 path. `internal/xray` gains only a `ProxySettings` field on `Outbound`.
@@ -101,6 +105,9 @@ path. `internal/xray` gains only a `ProxySettings` field on `Outbound`.
 - The planner still prefers an installed engine in a tie. Choosing the preference without installing v2ray-core
   leaves servers on an installed engine.
 - Settings that need sing-box (TUN, per-app rules) keep the existing sing-box relay after a v2ray-core step.
+
+- The server list, chain plan and config preview name the engine connecting would really use, with the node's
+  overrides applied and the installed engines taken into account.
 
 ## 5. Traffic stats
 
