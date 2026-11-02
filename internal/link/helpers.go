@@ -103,12 +103,3 @@ func nameFromFragment(frag, fallback string) string {
 	}
 	return fallback
 }
-
-// truncate shortens s to at most n runes (never splitting a UTF-8 sequence).
-func truncate(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
-		return s
-	}
-	return string(r[:n])
-}

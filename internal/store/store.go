@@ -61,7 +61,7 @@ func Open(dir string) (*Store, error) {
 		if err := json.Unmarshal(b, &d); err != nil {
 			quarantine := fmt.Sprintf("%s.corrupt-%d", s.path, time.Now().Unix())
 			if rerr := os.Rename(s.path, quarantine); rerr != nil {
-				return nil, fmt.Errorf("data file is corrupt (%v) and could not be moved aside: %w", err, rerr)
+				return nil, fmt.Errorf("data file is corrupt (%w) and could not be moved aside: %w", err, rerr)
 			}
 			s.warning = fmt.Sprintf("data file was unreadable (%v); moved to %s and started fresh", err, filepath.Base(quarantine))
 		} else {

@@ -4,7 +4,7 @@ BIN     := bin/keywayd
 # Separate path: go build refuses to overwrite a lipo'd fat binary.
 UNIBIN  := bin/keywayd-universal
 
-.PHONY: build vet lint smoke run app dmg universal snapshots clean
+.PHONY: build vet lint smoke e2e e2e-tor run app dmg universal snapshots clean
 build:
 	@mkdir -p bin
 	go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/keywayd
@@ -18,6 +18,14 @@ lint:
 
 smoke: build
 	./scripts/smoke.sh $(BIN)
+
+# Real engines and real connections through local fixture servers (downloads sing-box and Xray).
+e2e: build
+	./scripts/e2e.sh $(BIN)
+
+# Real Tor (needs the Tor network; slow and not a merge gate).
+e2e-tor: build
+	./scripts/e2e-tor.sh $(BIN)
 
 run: build
 	$(BIN)

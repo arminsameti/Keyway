@@ -1,0 +1,23 @@
+name: e2e-tor
+# Real Tor: it needs the Tor network, so it can be slow or flaky. It never
+# blocks a merge (continue-on-error); it also runs nightly to catch changes
+# in Tor's releases or bridges.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+jobs:
+  tor:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: 'stable' }
+      - run: make e2e-tor
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

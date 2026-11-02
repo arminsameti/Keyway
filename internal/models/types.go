@@ -85,6 +85,7 @@ type Settings struct {
 	AutoDownloadEngines bool   `json:"autoDownloadEngines"` // fetch an engine when a new server needs it
 	EngineUpdateCheck   string `json:"engineUpdateCheck"`   // never | daily | weekly
 	LatencyMethod       string `json:"latencyMethod"`       // tcp | real
+	TorEnabled          bool   `json:"torEnabled"`          // Tor servers, chains and the Tor engine are available
 
 	TUN TUNSettings `json:"tun"`
 

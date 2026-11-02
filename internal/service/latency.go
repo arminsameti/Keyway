@@ -69,10 +69,19 @@ func (s *Service) Measure(ctx context.Context, nodes []models.Node, mode string)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, workers)
+	torSem := make(chan struct{}, 1) // Tor bootstraps slowly: one at a time
 	for _, n := range nodes {
 		wg.Add(1)
 		go func(n models.Node) {
 			defer wg.Done()
+			if mode == ModeProxy && usesTor(d, n) {
+				select {
+				case torSem <- struct{}{}:
+					defer func() { <-torSem }()
+				case <-ctx.Done():
+					return
+				}
+			}
 			select {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
@@ -95,7 +104,7 @@ func (s *Service) Measure(ctx context.Context, nodes []models.Node, mode string)
 }
 
 func tcpProbe(ctx context.Context, n models.Node) int64 {
-	if n.Protocol == profile.Chain || n.Protocol == profile.Custom {
+	if n.Protocol == profile.Chain || n.Protocol == profile.Custom || n.Protocol == profile.Tor {
 		return models.LatencyNA // only the real test measures a whole chain or a hand-written config
 	}
 	udp := (profile.Profile{Protocol: n.Protocol}).UDPBased()
@@ -154,9 +163,26 @@ func (s *Service) applyLatencies(lat map[string]int64) {
 	}
 }
 
+// withoutTor drops Tor servers and chains with a Tor hop. Auto-pick never
+// chooses Tor (it is slow by design and choosing it is not a speed decision),
+// and a hidden Tor node is not measured while the feature is off.
+func withoutTor(d models.AppData, nodes []models.Node) []models.Node {
+	out := make([]models.Node, 0, len(nodes))
+	for _, n := range nodes {
+		if !usesTor(d, n) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 // TestLatency measures every node and stores the results.
 func (s *Service) TestLatency(ctx context.Context, mode string) (map[string]int64, string, error) {
-	nodes := s.store.Get().Nodes
+	d := s.store.Get()
+	nodes := d.Nodes
+	if !d.Settings.TorEnabled {
+		nodes = withoutTor(d, nodes)
+	}
 	if len(nodes) == 0 {
 		return map[string]int64{}, mode, nil
 	}
@@ -204,16 +230,17 @@ type PickResult struct {
 // On ErrAllFailed the returned result still carries the measured latencies.
 func (s *Service) PickFastest(ctx context.Context, reconnect bool, mode string) (PickResult, error) {
 	d := s.store.Get()
-	if len(d.Nodes) == 0 {
+	cand := withoutTor(d, d.Nodes)
+	if len(cand) == 0 {
 		return PickResult{}, ErrNoNodes
 	}
-	lat, used, err := s.Measure(ctx, d.Nodes, mode)
+	lat, used, err := s.Measure(ctx, cand, mode)
 	if err != nil {
 		return PickResult{}, err
 	}
 	s.applyLatencies(lat)
 	res := PickResult{Latency: lat, Mode: used}
-	id, ms := chooseBest(d.Nodes, lat)
+	id, ms := chooseBest(cand, lat)
 	if id == "" {
 		return res, ErrAllFailed
 	}
@@ -234,15 +261,16 @@ func (s *Service) PickFastest(ctx context.Context, reconnect bool, mode string) 
 // AutoPickOnce is one iteration of the auto-pick loop.
 func (s *Service) AutoPickOnce(ctx context.Context) (switched bool, err error) {
 	d := s.store.Get()
-	if len(d.Nodes) == 0 {
+	cand := withoutTor(d, d.Nodes)
+	if len(cand) == 0 {
 		return false, nil
 	}
-	lat, _, err := s.Measure(ctx, d.Nodes, ModeAuto)
+	lat, _, err := s.Measure(ctx, cand, ModeAuto)
 	if err != nil {
 		return false, err
 	}
 	s.applyLatencies(lat)
-	best, bestMs := chooseBest(d.Nodes, lat)
+	best, bestMs := chooseBest(cand, lat)
 	if best == "" || best == d.ActiveNodeID {
 		return false, nil
 	}

@@ -17,6 +17,10 @@ import (
 const (
 	NameXray    = "xray"
 	NameSingBox = "sing-box"
+	NameTor     = "tor"
+
+	// TorDisplayName is the user-facing name of the Tor engine.
+	TorDisplayName = "Tor"
 )
 
 // Install locates one installed engine version.
@@ -60,6 +64,18 @@ type Engine interface {
 type RuleSetUser interface {
 	RuleSets(s models.Settings) []string
 }
+
+// Bootstrapper is implemented by engines whose process is not usable when its
+// port opens (Tor must finish building a circuit first). WaitReady blocks until
+// it is, reporting progress, and fails with the reason when it never is.
+type Bootstrapper interface {
+	WaitReady(ctx context.Context, seg profile.Segment, progress func(percent int, summary string)) error
+}
+
+// RelayRequired is implemented by engines that cannot serve the user's apps
+// themselves (no HTTP proxy, routing rules or TUN): the planner follows them
+// with a sing-box relay.
+type RelayRequired interface{ RelayRequired() bool }
 
 // TagAware is implemented by engines whose capabilities depend on the build
 // tags of the installed binary.

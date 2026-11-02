@@ -4,7 +4,7 @@
 
 # Keyway
 
-**A native macOS client for Xray, V2Ray and sing-box, with proxy chaining.**
+**A native macOS client for Xray and sing-box, with proxy chaining.**
 
 Import a link or subscription, chain servers together, and connect in one click.
 Built in SwiftUI. No Electron, no web view, no config files.
@@ -57,6 +57,15 @@ Route traffic through several servers in a row, and mix protocols freely, for ex
 | **sing-box** | Hysteria and Hysteria2, TUIC v5, AnyTLS, ShadowTLS, NaiveProxy, WireGuard, OpenVPN, plus VLESS, VMess, Trojan and Shadowsocks |
 
 Keyway downloads Xray and sing-box from their official GitHub releases, verifies their checksums, keeps them updated, and runs whichever engine supports each server. When both can, you choose the preference. Servers that need a specific engine (for example plain VLESS without TLS, which current Xray refuses) are moved to the right one automatically.
+
+### Tor (optional)
+
+Turn on **Settings › Engines › Enable Tor** to use the Tor network from Keyway. It is off by default, and while it is off nothing about Tor is shown, downloaded or run.
+
+- **A Tor server is a normal entry in your list.** Connect to it directly, or put it anywhere in a chain: `Tor → VLESS`, `VLESS → Tor`, or `A → Tor → B`. A chain can have one Tor hop.
+- **Bridges** for networks where Tor is blocked: obfs4, Snowflake, meek, or your own lines from bridges.torproject.org.
+- **Limits:** Tor carries TCP only, so WireGuard, Hysteria and other UDP hops cannot come after it, and Snowflake cannot sit behind another hop. Tor needs sing-box installed too, which Keyway downloads for you; it serves your apps, the system proxy and routing rules. Auto-select never picks Tor.
+- Tor is downloaded from the Tor Project (its Expert Bundle) and checked against the SHA-256 they publish.
 
 ### Import from anywhere
 
@@ -135,9 +144,13 @@ Backend flags: `-port`, `-data-dir`, `-version`. The API token is written to `~/
 ```sh
 make vet && make lint
 make smoke            # start the backend and call the API
+make e2e              # real engines and connections through local fixture servers
+make e2e-tor          # real Tor (needs the Tor network; slow, not a merge gate)
 ```
 
-CI (`.github/workflows/ci.yml`) runs gofmt, vet, the smoke test and the Swift build on every push and pull request.
+There are no unit tests; the end-to-end scripts are the tests. `make e2e` downloads sing-box and Xray through Keyway's own download code, runs sing-box as a fixture server on loopback, then connects through Shadowsocks (on both engines), plain VLESS and a two-hop chain. It fetches a local page through each and checks the server's log, so a request that bypasses the server fails. It also runs a real latency test and checks that disconnect leaves nothing running. `make e2e-tor` checks that the exit is Tor, loads an `.onion` page, runs a proxy-then-Tor chain and turns Tor off. Both use random ports and a temporary data directory, so they never touch a Keyway you have installed. `make lint` needs [golangci-lint](https://golangci-lint.run) v1.
+
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: gofmt, vet, golangci-lint and the smoke test; a full `make app` build of the macOS bundle with architecture and signature checks; and `make e2e`. `e2e-tor.yml` runs the Tor test on pushes to `main`, pull requests and nightly, without blocking merges.
 
 ### Release
 
@@ -155,7 +168,7 @@ Push a tag like `v0.2.0` (`git tag v0.2.0 && git push origin v0.2.0`). `.github/
 | `internal/core` | list, download and verify engine releases, safe extraction |
 | `internal/link` | share links, WireGuard, OpenVPN, Clash and sing-box imports ⇄ profiles |
 | `internal/engine` | `Engine` interface, capability-based selection, chain planner, process runner, latency probe |
-| `internal/xray`, `internal/singbox` | typed config builders for each engine |
+| `internal/xray`, `internal/singbox`, `internal/tor` | config builders for each engine (`internal/tor` also reads Tor's bootstrap progress) |
 | `internal/privileged` | helper validation, one-time install, elevated run |
 | `internal/sysproxy` | macOS `networksetup` wrapper with crash recovery |
 | `internal/service` | all business logic behind one lifecycle lock |
@@ -164,7 +177,9 @@ Push a tag like `v0.2.0` (`git tag v0.2.0 && git push origin v0.2.0`). `.github/
 
 ### Security model
 
-The API binds to 127.0.0.1 and defends against other local pages and processes: Host allow-list (DNS rebinding), Origin and `Sec-Fetch-Site` checks (CSRF), a per-launch token, JSON-only bodies capped at 1 MiB and a `default-src 'none'` CSP. Downloads come only from GitHub hosts and are verified before install (Xray against its `.dgst`, sing-box against the SHA-256 GitHub reports, rule sets against the git blob hash). Only whitelisted archive entries are extracted. Subscription fetches are SSRF-guarded. Listeners on non-loopback addresses require credentials.
+When Tor is enabled, its SOCKS port listens on loopback without a password (Tor cannot require one), so other programs on the same Mac can use it. It exposes only access through Tor and no secrets.
+
+The API binds to 127.0.0.1 and defends against other local pages and processes: Host allow-list (DNS rebinding), Origin and `Sec-Fetch-Site` checks (CSRF), a per-launch token, JSON-only bodies capped at 1 MiB and a `default-src 'none'` CSP. Downloads come only from GitHub hosts (and `dist.torproject.org` for Tor) and are verified before install (Xray against its `.dgst`, sing-box against the SHA-256 GitHub reports, rule sets against the git blob hash). Only whitelisted archive entries are extracted. Subscription fetches are SSRF-guarded. Listeners on non-loopback addresses require credentials.
 
 ### Behaviour notes
 

@@ -84,6 +84,9 @@ func PlanSegments(hops []profile.Profile, pref string, engines []Engine, install
 		steps = append(steps, Step{Engine: cands[0].e, From: i, To: cands[0].to})
 		i = cands[0].to
 	}
+	if rr, ok := steps[len(steps)-1].Engine.(RelayRequired); ok && rr.RelayRequired() && final == "" {
+		final = NameSingBox // the one engine that can run a relay with no hops of its own
+	}
 	if final != "" && steps[len(steps)-1].Engine.Name() != final {
 		var relay Engine
 		for _, e := range engines {

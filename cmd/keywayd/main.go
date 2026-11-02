@@ -91,12 +91,17 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	torCores, err := core.NewManager(filepath.Join(enginesDir, engine.NameTor), core.TorSource)
+	if err != nil {
+		return err
+	}
 	runner := engine.NewRunner(filepath.Join(dir, "xray.pid"))
 	svc, err := service.New(service.Config{
 		Store: st,
 		Engines: []service.EngineSlot{
 			{Engine: engine.Xray{}, Manager: xrayCores},
 			{Engine: &engine.SingBox{RuleSetPath: sbCores.RuleSetPath}, Manager: sbCores},
+			{Engine: engine.Tor{}, Manager: torCores},
 		},
 		EnginesDir: enginesDir,
 		Runner:     runner, Sys: sysproxy.New(), Logger: log, Dir: dir,
