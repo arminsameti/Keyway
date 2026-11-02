@@ -18,7 +18,7 @@ Built in SwiftUI. No Electron, no web view, no config files.
 
 </div>
 
-Keyway is a free, open-source, native macOS app for people who use **Xray-core (VLESS, VMess, Trojan, Reality)** or **sing-box (Hysteria2, TUIC, WireGuard, OpenVPN)** and want a Mac client that feels like a Mac app. It downloads and manages both engines for you, picks the right one for every server, and lets you build **multi-hop proxy chains** across protocols. If you are looking for a V2RayX, V2rayU or v2rayN alternative on macOS, this is it.
+Keyway is a free, open-source, native macOS app for people who use **Xray-core (VLESS, VMess, Trojan, Reality)** or **sing-box (Hysteria2, TUIC, WireGuard, OpenVPN)**, optionally **V2Ray core** or **Tor**, and want a Mac client that feels like a Mac app. It downloads and manages the engines for you, picks the right one for every server, and lets you build **multi-hop proxy chains** across protocols. If you are looking for a V2RayX, V2rayU or v2rayN alternative on macOS, this is it.
 
 ## Download and use
 
@@ -95,16 +95,19 @@ TUN starts sing-box as root. By default macOS asks for your password every time 
 ## FAQ
 
 **What is Keyway?**
-A free, open-source macOS client for Xray-core and sing-box. It gives you a native app for importing servers, chaining them and connecting, instead of editing JSON by hand.
+A free, open-source macOS client for Xray-core, sing-box and V2Ray core, with WireGuard, OpenVPN and Tor support. It gives you a native app for importing servers, chaining them and connecting, instead of editing JSON by hand.
 
 **Is it a V2Ray / Xray client for Mac?**
-Yes. It runs Xray-core (the successor to V2Ray) and imports V2Ray and Xray links, including VMess, VLESS, Trojan and Shadowsocks, plus subscriptions.
+Yes. It runs Xray-core (the successor to V2Ray) and imports V2Ray and Xray links, including VMess, VLESS, Trojan and Shadowsocks, plus subscriptions. You can also run v2fly's V2Ray core as an optional engine.
 
 **Does it support proxy chaining or multi-hop?**
 Yes. You can chain any number of servers and mix protocols, such as OpenVPN into VLESS Reality into WireGuard.
 
 **Does it support Hysteria2, TUIC, WireGuard and OpenVPN?**
-Yes, through sing-box, which Keyway installs and updates for you. OpenVPN runs in userspace, so it needs no administrator rights.
+Yes, through sing-box, which Keyway installs and updates for you (WireGuard also runs on Xray-core). OpenVPN runs in userspace, so it needs no administrator rights.
+
+**Does it support Tor?**
+Yes, as an option. Turn it on in Settings › Engines, then use a Tor server on its own or as a hop in a chain, with bridges (obfs4, Snowflake, meek) for networks where Tor is blocked. See [Tor](#tor-optional).
 
 **Does it work on Apple silicon and Intel Macs?**
 Yes. The release is a universal build for macOS 14 or later.
@@ -153,7 +156,7 @@ make e2e-tor          # real Tor (needs the Tor network; slow, not a merge gate)
 
 There are no unit tests; the end-to-end scripts are the tests. `make e2e` downloads sing-box and Xray through Keyway's own download code, runs sing-box as a fixture server on loopback, then connects through Shadowsocks (on both engines), plain VLESS and a two-hop chain. It fetches a local page through each and checks the server's log, so a request that bypasses the server fails. It also runs a real latency test and checks that disconnect leaves nothing running. `make e2e-tor` checks that the exit is Tor, loads an `.onion` page, runs a proxy-then-Tor chain and turns Tor off. Both use random ports and a temporary data directory, so they never touch a Keyway you have installed. `make lint` needs [golangci-lint](https://golangci-lint.run) v1.
 
-CI (`.github/workflows/ci.yml`) runs on every push and pull request: gofmt, vet, golangci-lint and the smoke test; a full `make app` build of the macOS bundle with architecture and signature checks; and `make e2e`. `e2e-tor.yml` runs the Tor test on pushes to `main`, pull requests and nightly, without blocking merges.
+CI (`.github/workflows/ci.yml`) runs on every push and pull request: gofmt, vet, golangci-lint and the smoke test; a full `make app` build of the macOS bundle with architecture and signature checks; and `make e2e`. `e2e-tor.yml` runs the Tor test on pushes to `master`, pull requests and nightly, without blocking merges.
 
 ### Release
 
