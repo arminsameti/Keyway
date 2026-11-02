@@ -2,6 +2,18 @@ run:
   timeout: 5m
 linters:
   enable: [errcheck, govet, staticcheck, unused, ineffassign, gosec, bodyclose, errorlint, misspell]
+linters-settings:
+  gosec:
+    # Keyway runs proxy engines and writes owner-only files by design; these
+    # rules flag exactly that, or things that are safe here:
+    excludes:
+      - G204 # launches the engines it manages, from paths it installed
+      - G305 # archive extraction writes only whitelisted names (internal/core)
+      - G306 # file modes are chosen on purpose (sudoers rule 0440, VERSION 0644)
+      - G115 # sizes are bounded before conversion
+      - G101 # "X-Keyway-Token" is a header name, not a credential
+      - G505 # git blob hashes of rule sets are SHA-1 by definition
+      - G401
 issues:
   exclude-rules:
     - path: _test\.go
