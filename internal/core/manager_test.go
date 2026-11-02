@@ -37,16 +37,19 @@ func TestV2RaySourceFiles(t *testing.T) {
 }
 
 // v2ray-core marks most recent releases as pre-releases; asking for one stable
-// release must still look past them.
+// release must still look past them, one small page at a time.
 func TestFetchReleasesLooksPastPrereleases(t *testing.T) {
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		n, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
-		all := []string{`{"tag_name":"v5.56.0","prerelease":true}`, `{"tag_name":"v5.55.0","prerelease":true}`,
-			`{"tag_name":"v5.54.0","prerelease":true}`, `{"tag_name":"v5.53.0","prerelease":false}`}
-		if n < len(all) {
-			all = all[:n]
+		pg, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		var all []string
+		for i := 0; i < 7; i++ {
+			all = append(all, fmt.Sprintf(`{"tag_name":"v5.%d.0","prerelease":true}`, 60-i))
 		}
-		fmt.Fprintf(w, "[%s]", strings.Join(all, ","))
+		all = append(all, `{"tag_name":"v5.53.0","prerelease":false}`)
+		lo := min((pg-1)*n, len(all))
+		hi := min(lo+n, len(all))
+		fmt.Fprintf(w, "[%s]", strings.Join(all[lo:hi], ","))
 	}))
 	defer ts.Close()
 	m, err := NewManager(t.TempDir(), V2RaySource)
