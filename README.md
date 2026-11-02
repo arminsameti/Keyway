@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="Keyway logo: a key inside a shield" width="120">
+<img src="assets/icon.png" alt="Keyway logo: a keyhole with a three-hop route through it" width="120">
 
 # Keyway
 

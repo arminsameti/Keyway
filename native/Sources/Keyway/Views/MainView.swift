@@ -663,7 +663,7 @@ struct ChainRouteCard: View {
     }
 }
 
-/// The app's shield-and-key logo (white on transparent), shipped as Logo.png in the bundle.
+/// The app's keyhole logo (white on transparent), shipped as Logo.png in the bundle.
 struct BrandMark: View {
     let fallback: String
     let size: CGFloat
