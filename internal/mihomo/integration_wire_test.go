@@ -192,6 +192,24 @@ func TestIntegrationSniffingFeedsDomainRules(t *testing.T) {
 	}
 }
 
+// The minimal config used for latency tests and "Test Connection".
+func TestIntegrationProbeConfigCarriesTraffic(t *testing.T) {
+	needBin(t, "KEYWAY_MIHOMO_BIN")
+	tgt := webTarget(t)
+	exitPort := freePort(t)
+	mihomoServer(t, "exit", exitPort, map[string]any{"type": "vmess", "users": []any{map[string]any{"username": "u", "uuid": testUUID, "alterId": 0}}})
+	exit := profile.Profile{Protocol: profile.VMess, Server: "127.0.0.1", Port: exitPort, UUID: testUUID, Cipher: "auto", Transport: profile.Transport{Type: "tcp"}}
+	port := freePort(t)
+	b, err := ProbeConfig(profile.Single(exit), port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	startMihomo(t, b, port)
+	if body, err := viaSocks(t, port, "", "", tgt.URL); err != nil || body != "probe-ok" {
+		t.Fatalf("body = %q, err = %v", body, err)
+	}
+}
+
 // Mux is sing-mux: a sing-box server that offers it carries the connections, and
 // one that does not refuses them, which shows the setting is really on the wire.
 func TestIntegrationMuxIsSingMux(t *testing.T) {
