@@ -94,10 +94,18 @@ type Outbound struct {
 	Settings       any             `json:"settings,omitempty"`
 	StreamSettings *StreamSettings `json:"streamSettings,omitempty"`
 	Mux            *Mux            `json:"mux,omitempty"`
+	ProxySettings  *ProxySettings  `json:"proxySettings,omitempty"`
 
 	// Raw, when set, is the whole outbound as written by the user (a custom
 	// server); the typed fields are then only used for lookups such as Tag.
 	Raw json.RawMessage `json:"-"`
+}
+
+// ProxySettings dials an outbound through another one on v2ray-core, which
+// silently ignores sockopt.dialerProxy.
+type ProxySettings struct {
+	Tag            string `json:"tag"`
+	TransportLayer bool   `json:"transportLayer"`
 }
 
 func (o Outbound) MarshalJSON() ([]byte, error) {
