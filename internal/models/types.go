@@ -120,6 +120,9 @@ type EngineCheck struct {
 type AppData struct {
 	Version      int    `json:"version"`
 	ActiveNodeID string `json:"activeNodeId"`
+	// ActiveGroupID is set when the active "server" is a group: ActiveNodeID then
+	// always mirrors the group's current member (see ReconcileGroups).
+	ActiveGroupID string `json:"activeGroupId,omitempty"`
 	// ActiveCore is the schema-2 Xray version; migrated into Engines["xray"].
 	ActiveCore    string                 `json:"activeCore,omitempty"`
 	Engines       map[string]string      `json:"engines"`      // engine name -> active version tag
@@ -127,6 +130,7 @@ type AppData struct {
 	AppCheck      EngineCheck            `json:"appCheck"`     // last check for a newer Keyway
 	Nodes         []Node                 `json:"nodes"`
 	Subscriptions []Subscription         `json:"subscriptions"`
+	Groups        []Group                `json:"groups"`
 	Settings      Settings               `json:"settings"`
 }
 
@@ -167,6 +171,7 @@ func DefaultAppData() AppData {
 		EngineChecks:  map[string]EngineCheck{},
 		Nodes:         []Node{},
 		Subscriptions: []Subscription{},
+		Groups:        []Group{},
 		Settings:      DefaultSettings(),
 	}
 }
@@ -212,6 +217,11 @@ func (d AppData) Clone() AppData {
 		}
 		sub.Warnings = append([]string(nil), sub.Warnings...)
 		c.Subscriptions[i] = sub
+	}
+	c.Groups = make([]Group, len(d.Groups))
+	for i, g := range d.Groups {
+		g.Members = append([]string(nil), g.Members...)
+		c.Groups[i] = g
 	}
 	c.Settings = d.Settings.Clone()
 	return c

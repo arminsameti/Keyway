@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -88,7 +89,7 @@ func TestRefreshStoresSubscriptionDetails(t *testing.T) {
 	}, &body)
 	svc := newTestService(t)
 
-	sub, added, _, err := svc.AddSubscription(t.Context(), "", srv.URL)
+	sub, added, _, err := svc.AddSubscription(context.Background(), "", srv.URL)
 	if err != nil || added != 2 {
 		t.Fatalf("added=%d err=%v", added, err)
 	}
@@ -108,7 +109,7 @@ func TestAddSubscriptionKeepsGivenName(t *testing.T) {
 	body := vlessA
 	srv := subServer(t, map[string]string{"Profile-Title": "Provider"}, &body)
 	svc := newTestService(t)
-	sub, _, _, err := svc.AddSubscription(t.Context(), "Mine", srv.URL)
+	sub, _, _, err := svc.AddSubscription(context.Background(), "Mine", srv.URL)
 	if err != nil || sub.Name != "Mine" || sub.Title != "Provider" {
 		t.Fatalf("sub=%+v err=%v", sub, err)
 	}
@@ -119,13 +120,13 @@ func TestRefreshClearsDetailsTheProviderStopsSending(t *testing.T) {
 	hdr := map[string]string{"Subscription-Userinfo": "upload=1; download=2; total=3", "Profile-Update-Interval": "6"}
 	srv := subServer(t, hdr, &body)
 	svc := newTestService(t)
-	sub, _, _, err := svc.AddSubscription(t.Context(), "n", srv.URL)
+	sub, _, _, err := svc.AddSubscription(context.Background(), "n", srv.URL)
 	if err != nil || sub.Usage == nil {
 		t.Fatalf("sub=%+v err=%v", sub, err)
 	}
 	delete(hdr, "Subscription-Userinfo")
 	delete(hdr, "Profile-Update-Interval")
-	if _, _, _, err := svc.RefreshSubscription(t.Context(), sub.ID); err != nil {
+	if _, _, _, err := svc.RefreshSubscription(context.Background(), sub.ID); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := svc.findSub(sub.ID)
@@ -138,12 +139,12 @@ func TestFailedRefreshKeepsDetails(t *testing.T) {
 	body := vlessA
 	srv := subServer(t, map[string]string{"Subscription-Userinfo": "upload=1; download=2; total=3"}, &body)
 	svc := newTestService(t)
-	sub, _, _, err := svc.AddSubscription(t.Context(), "n", srv.URL)
+	sub, _, _, err := svc.AddSubscription(context.Background(), "n", srv.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body = "<html>nope</html>"
-	if _, _, _, err := svc.RefreshSubscription(t.Context(), sub.ID); err == nil {
+	if _, _, _, err := svc.RefreshSubscription(context.Background(), sub.ID); err == nil {
 		t.Fatal("expected an error")
 	}
 	got, _ := svc.findSub(sub.ID)
