@@ -4,7 +4,7 @@
 
 # Keyway
 
-**A native macOS client for Xray and sing-box, with proxy chaining.**
+**A native macOS client for Xray, V2Ray and sing-box, with proxy chaining.**
 
 Import a link or subscription, chain servers together, and connect in one click.
 Built in SwiftUI. No Electron, no web view, no config files.
