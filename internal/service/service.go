@@ -212,6 +212,8 @@ func (s *Service) current() runInfo {
 type State struct {
 	Nodes         []NodeView            `json:"nodes"`
 	ActiveNodeID  string                `json:"activeNodeId"`
+	Groups        []GroupView           `json:"groups"`
+	ActiveGroupID string                `json:"activeGroupId"` // set when the active server is a group
 	Settings      models.Settings       `json:"settings"`
 	Engines       []EngineView          `json:"engines"`
 	Subscriptions []models.Subscription `json:"subscriptions"`
@@ -227,6 +229,8 @@ func (s *Service) State() State {
 	return State{
 		Nodes:         s.nodeViews(d),
 		ActiveNodeID:  d.ActiveNodeID,
+		Groups:        s.groupViews(d),
+		ActiveGroupID: d.ActiveGroupID,
 		Settings:      d.Settings,
 		Engines:       s.Engines(),
 		Subscriptions: d.Subscriptions,
@@ -255,6 +259,7 @@ type Status struct {
 	engine.Status
 	ActiveNode      string   `json:"activeNode"` // display name (no flag emoji)
 	ActiveNodeID    string   `json:"activeNodeId"`
+	ActiveGroup     string   `json:"activeGroup,omitempty"` // name of the group in use, if any
 	ActiveCountry   string   `json:"activeCountryCode,omitempty"`
 	ActiveLatencyMs int64    `json:"activeLatencyMs"`
 	Protocol        string   `json:"protocol,omitempty"`
@@ -295,6 +300,9 @@ func (s *Service) Status() Status {
 			st.UptimeSec = int64(time.Since(st.StartedAt).Seconds())
 		}
 	}
+	if g, ok := d.FindGroup(d.ActiveGroupID); ok {
+		st.ActiveGroup = g.Name
+	}
 	if n, ok := d.FindNode(id); ok {
 		v := s.nodeView(d, n)
 		st.ActiveNode, st.ActiveNodeID, st.ActiveLatencyMs, st.ActiveCountry = v.DisplayName, n.ID, n.LatencyMs, v.CountryCode
@@ -317,7 +325,7 @@ func (s *Service) SetActive(id string) error {
 		if _, ok := d.FindNode(id); !ok {
 			return ErrNodeNotFound
 		}
-		d.ActiveNodeID = id
+		d.ActiveNodeID, d.ActiveGroupID = id, "" // choosing a server leaves the group
 		return nil
 	})
 	return err

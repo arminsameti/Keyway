@@ -54,7 +54,8 @@ func (s *Service) Import(ctx context.Context, text, subURL string) (ImportResult
 	var urls []string
 	var nodes []models.Node
 	var errs []string
-	for _, it := range link.Classify(text) {
+	items := link.Classify(text)
+	for _, it := range items {
 		switch it.Kind {
 		case link.KindReady:
 			nodes = append(nodes, it.Result.Node)
@@ -64,6 +65,8 @@ func (s *Service) Import(ctx context.Context, text, subURL string) (ImportResult
 			errs = append(errs, skipMessage(it))
 		}
 	}
+	specs, groupWarns := link.MapClashGroups(text, items)
+	errs = append(errs, groupWarns...)
 	if strings.TrimSpace(subURL) != "" {
 		urls = append(urls, strings.TrimSpace(subURL))
 	}
@@ -71,6 +74,7 @@ func (s *Service) Import(ctx context.Context, text, subURL string) (ImportResult
 	if len(nodes) > 0 {
 		if _, err := s.store.Update(func(d *models.AppData) error {
 			res.Added += mergeNodes(d, nodes, "")
+			addPastedGroups(d, specs)
 			return nil
 		}); err != nil {
 			return res, err
@@ -166,6 +170,7 @@ func (s *Service) RefreshSubscription(ctx context.Context, id string) (added, re
 	}
 
 	var format, title string
+	var warnings []string
 	var updateHours int
 	var usage *models.SubUsage
 	record := func(msg string, n int) {
@@ -179,6 +184,7 @@ func (s *Service) RefreshSubscription(ctx context.Context, id string) (added, re
 						d.Subscriptions[i].Format = format
 						// what the provider reports now replaces what it reported before
 						d.Subscriptions[i].Title, d.Subscriptions[i].UpdateHours, d.Subscriptions[i].Usage = title, updateHours, usage
+						d.Subscriptions[i].Warnings = warnings
 					}
 				}
 			}
@@ -200,7 +206,8 @@ func (s *Service) RefreshSubscription(ctx context.Context, id string) (added, re
 	format = link.DetectFormat(body)
 	var nodes []models.Node
 	var perrs []string
-	for _, it := range link.Classify(body) {
+	items := link.Classify(body)
+	for _, it := range items {
 		switch it.Kind {
 		case link.KindReady:
 			nodes = append(nodes, it.Result.Node)
@@ -216,6 +223,13 @@ func (s *Service) RefreshSubscription(ctx context.Context, id string) (added, re
 		record(err.Error(), 0)
 		return 0, 0, perrs, err
 	}
+
+	specs, groupWarns := link.MapClashGroups(body, items)
+	warnings = append([]string(nil), groupWarns...)
+	if len(perrs) > 0 {
+		warnings = append(warnings, fmt.Sprintf("%d entries could not be imported", len(perrs)))
+	}
+	perrs = append(perrs, groupWarns...)
 
 	fresh := make(map[string]models.Node, len(nodes))
 	for _, n := range nodes {
@@ -245,6 +259,7 @@ func (s *Service) RefreshSubscription(ctx context.Context, id string) (added, re
 			d.Nodes = append(d.Nodes, n)
 			added++
 		}
+		syncImportedGroups(d, id, specs)
 		if _, ok := d.FindNode(d.ActiveNodeID); !ok {
 			d.ActiveNodeID = ""
 		}
