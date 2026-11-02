@@ -51,7 +51,11 @@ func BuildConfig(seg profile.Segment, s models.Settings) ([]byte, error) {
 		last := &cfg.Proxies[len(cfg.Proxies)-1]
 		last.SMux = &SMux{Enabled: true, Protocol: "h2mux", MaxStreams: conc}
 	}
-	if cfg.DNS, err = dnsConfig(s.DNS); err != nil {
+	servers, err := dnsServers(s)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.DNS, err = dnsConfig(servers); err != nil {
 		return nil, err
 	}
 	if s.Sniffing {
@@ -155,6 +159,27 @@ func muxCapable(p profile.Profile) bool {
 		return false
 	}
 	return p.Flow == "" && p.Transport.Type != "grpc" && p.Transport.Type != "h2"
+}
+
+// dnsServers is the resolver list the DNS settings amount to. Mihomo cannot keep
+// a separate direct resolver for the bypassed domains, and refuses it rather
+// than run with the setting dropped.
+func dnsServers(s models.Settings) ([]string, error) {
+	plan, err := s.DNSPlan()
+	if err != nil {
+		return nil, err
+	}
+	if plan.Direct != nil {
+		return nil, fmt.Errorf("Mihomo cannot keep a separate direct DNS server; Xray core or sing-box can")
+	}
+	if plan.Mode == models.DNSModeDefault {
+		return s.DNS, nil
+	}
+	out := make([]string, 0, len(plan.Servers))
+	for _, d := range plan.Servers {
+		out = append(out, d.String())
+	}
+	return out, nil
 }
 
 // dnsConfig maps Keyway's resolver list onto Mihomo's. Plain addresses and

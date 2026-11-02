@@ -63,16 +63,6 @@ func freePort(t *testing.T) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-func freeUDPPort(t *testing.T) int {
-	t.Helper()
-	c, err := net.ListenPacket("udp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	return c.LocalAddr().(*net.UDPAddr).Port
-}
-
 // testCert is a self-signed certificate for a.example.
 type testCert struct {
 	cert, key string // PEM files

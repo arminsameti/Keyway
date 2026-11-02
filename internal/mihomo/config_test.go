@@ -587,6 +587,29 @@ func TestDNSServers(t *testing.T) {
 	}
 }
 
+func TestDNSModes(t *testing.T) {
+	s := settings()
+	s.DNSMode = models.DNSModeSystem
+	d := build(t, profile.Single(vless()), s)["dns"].(map[string]any)
+	if !reflect.DeepEqual(d["nameserver"], []any{"system"}) {
+		t.Errorf("system mode: nameserver = %v", d["nameserver"])
+	}
+	s.DNSMode = models.DNSModeSecure
+	d = build(t, profile.Single(vless()), s)["dns"].(map[string]any)
+	if !reflect.DeepEqual(d["nameserver"], []any{"https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"}) {
+		t.Errorf("secure mode: nameserver = %v", d["nameserver"])
+	}
+	s.DNSMode, s.DNS = models.DNSModeCustom, []string{"9.9.9.9"}
+	d = build(t, profile.Single(vless()), s)["dns"].(map[string]any)
+	if !reflect.DeepEqual(d["nameserver"], []any{"9.9.9.9"}) {
+		t.Errorf("custom mode: nameserver = %v", d["nameserver"])
+	}
+	s.DNSDirect = "223.5.5.5"
+	if _, err := BuildConfig(profile.Single(vless()), s); err == nil || !strings.Contains(err.Error(), "direct DNS") {
+		t.Errorf("a direct resolver was dropped silently: %v", err)
+	}
+}
+
 func TestSniffing(t *testing.T) {
 	s := settings()
 	if sn, _ := build(t, profile.Single(vless()), s)["sniffer"].(map[string]any); sn["enable"] != true {
