@@ -23,6 +23,7 @@ type Item struct {
 	URL    string // set when Kind is subscription
 	Reason string // set when Kind is skipped; never contains the link itself
 	Label  string // how to name a skipped entry from a config file ("HK 01 (snell)")
+	Name   string // the entry's own name in a config file (Clash), for matching group members
 }
 
 // Formats recognised by DetectFormat.
