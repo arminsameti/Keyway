@@ -37,6 +37,8 @@ public enum DesignColors {
     public static let xrayBadgeFill = ColorPair(0xE6F0FC, 0x1A2A40)
     public static let singBoxBadgeText = ColorPair(0x5B36B5, 0xC4B0FF)
     public static let singBoxBadgeFill = ColorPair(0xEFEAFB, 0x2D2445)
+    public static let v2rayBadgeText = ColorPair(0x00695C, 0x7FD8C8)
+    public static let v2rayBadgeFill = ColorPair(0xE0F4F1, 0x16352F)
     public static let latencyFastFill = ColorPair(0xE4F4E8, 0x1F3A27)
     public static let latencyOKFill = ColorPair(0xFFEFDB, 0x40301A)
     public static let latencySlowFill = ColorPair(0xFDE8E8, 0x46201E)

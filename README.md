@@ -4,7 +4,7 @@
 
 # Keyway
 
-**A native macOS client for Xray and sing-box, with proxy chaining.**
+**A native macOS client for Xray, V2Ray and sing-box, with proxy chaining.**
 
 Import a link or subscription, chain servers together, and connect in one click.
 Built in SwiftUI. No Electron, no web view, no config files.
@@ -55,8 +55,11 @@ Route traffic through several servers in a row, and mix protocols freely, for ex
 |---|---|
 | **Xray-core** | VLESS (Reality, Vision, XHTTP), VMess, Trojan, Shadowsocks (incl. 2022), SOCKS5, HTTP, WireGuard, Hysteria2 |
 | **sing-box** | Hysteria and Hysteria2, TUIC v5, AnyTLS, ShadowTLS, NaiveProxy, WireGuard, OpenVPN, plus VLESS, VMess, Trojan and Shadowsocks |
+| **V2Ray core** (optional) | VLESS over TLS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP |
 
 Keyway downloads Xray and sing-box from their official GitHub releases, verifies their checksums, keeps them updated, and runs whichever engine supports each server. When both can, you choose the preference. Servers that need a specific engine (for example plain VLESS without TLS, which current Xray refuses) are moved to the right one automatically.
+
+V2Ray core is optional. Download it in **Settings › Engines** and choose **Prefer V2Ray core** to run the servers it supports through v2ray-core itself. Keyway only uses it when every setting of a server takes effect there, so Reality, Vision, pinned certificates and servers with a TLS fingerprint stay on Xray or sing-box.
 
 ### Tor (optional)
 

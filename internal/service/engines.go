@@ -37,7 +37,7 @@ func (s *Service) engineView(d models.AppData, sl EngineSlot) EngineView {
 	name := sl.Engine.Name()
 	v := EngineView{
 		Name: name, DisplayName: sl.Engine.DisplayName(), Installed: sl.Manager.Installed(),
-		Dir: sl.Manager.Dir(), Protocols: []string{},
+		Dir: sl.Manager.Dir(),
 	}
 	if v.Installed == nil {
 		v.Installed = []string{}
@@ -49,18 +49,28 @@ func (s *Service) engineView(d models.AppData, sl EngineSlot) EngineView {
 		v.Latest, v.CheckedAt, v.CheckError = c.Latest, c.CheckedAt, c.Error
 		v.UpdateAvailable = v.Active != "" && c.Latest != "" && core.CompareVersions(c.Latest, v.Active) > 0
 	}
+	v.Protocols = engineProtocols(sl.Engine)
+	return v
+}
+
+// engineProtocols lists the display names of the protocols an engine runs.
+func engineProtocols(e engine.Engine) []string {
+	out := []string{}
 	for _, p := range allProtocols {
 		// a minimal valid shape: some protocols require options (Hysteria v1 bandwidth)
 		probe := profile.Profile{Protocol: p, Hysteria: &profile.HysteriaOpts{UpMbps: 1, DownMbps: 1}}
 		if p == profile.Hysteria2 {
 			probe.Hysteria = nil
 		}
+		if p == profile.VLESS {
+			probe.Security.Kind = "tls" // cores differ on VLESS without TLS, not on VLESS itself
+		}
 		probe.Tor = &profile.TorOpts{Bridges: profile.TorBridgeNone}
-		if sl.Engine.Supports(probe) == nil {
-			v.Protocols = append(v.Protocols, profile.ProtocolName(p))
+		if e.Supports(probe) == nil {
+			out = append(out, profile.ProtocolName(p))
 		}
 	}
-	return v
+	return out
 }
 
 // Engines lists every engine with its install and update state.
