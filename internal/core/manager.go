@@ -38,6 +38,8 @@ var ErrNotInstalled = errors.New("engine not installed")
 const (
 	ArchiveZip   = "zip"
 	ArchiveTarGz = "tar.gz"
+	// ArchiveGz: a single gzip-compressed executable (Mihomo).
+	ArchiveGz = "gz"
 
 	// ChecksumDgst: a "<asset>.dgst" file published next to the asset (Xray).
 	ChecksumDgst = "dgst"
@@ -110,6 +112,16 @@ var V2RaySource = Source{
 		"geosite.dat": {0o644, maxDataSize},
 	},
 	Assets: v2rayAssets,
+}
+
+// MihomoSource is the official Mihomo (Clash.Meta) release channel. Mihomo is
+// GPL-3.0; Keyway only downloads it and runs it as a separate process. It
+// publishes no checksum file, so the archive is verified against the SHA-256
+// that GitHub's release API reports for the asset (same as sing-box).
+var MihomoSource = Source{
+	Name: "Mihomo", Repo: "MetaCubeX/mihomo", Binary: "mihomo", Archive: ArchiveGz, Checksum: ChecksumDigest,
+	Files:  map[string]Member{"mihomo": {0o755, maxBinarySize}},
+	Assets: mihomoAssets,
 }
 
 // Release is a published Xray-core release.
@@ -512,8 +524,11 @@ func (m *Manager) install(zipPath, version string) error {
 	}
 	defer os.RemoveAll(stage)
 	extract := extractWhitelisted
-	if m.src.Archive == ArchiveTarGz {
+	switch m.src.Archive {
+	case ArchiveTarGz:
 		extract = extractTarGz
+	case ArchiveGz:
+		extract = extractGz
 	}
 	if err := extract(zipPath, stage, m.src); err != nil {
 		return err
