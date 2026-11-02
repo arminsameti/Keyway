@@ -4,7 +4,7 @@ name: e2e-tor
 # in Tor's releases or bridges.
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
   schedule:
     - cron: '17 4 * * *'
