@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"keyway/internal/engine"
 	"keyway/internal/models"
+	"keyway/internal/profile"
 )
 
 func readFile(p string) ([]byte, error) { return os.ReadFile(p) }
@@ -46,6 +48,13 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 	if err != nil {
 		return ConnectResult{}, fmt.Errorf("node %q: %w", node.Name, err)
 	}
+	if !d.Settings.TorEnabled {
+		for _, h := range hops {
+			if h.Protocol == profile.Tor {
+				return ConnectResult{}, errTorOff
+			}
+		}
+	}
 	pl, err := s.planFor(hops, names, d, s.finalFor(d))
 	for attempt := 0; attempt < len(s.engines); attempt++ {
 		var ni *engine.NotInstalledError
@@ -68,10 +77,16 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 	if err := s.prepare(ctx, final, d); err != nil { // routing rule sets belong to the segment that routes
 		return ConnectResult{}, err
 	}
-	segs, err := pl.segments()
+	segs, err := pl.segments(s.dir)
 	if err != nil {
 		return ConnectResult{}, err
 	}
+	started := false
+	defer func() {
+		if !started {
+			pl.cleanup()
+		}
+	}()
 
 	stats, serr := newStatsAPI()
 	if serr != nil {
@@ -102,7 +117,11 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 	if err := s.stopAll(); err != nil {
 		return ConnectResult{}, err
 	}
-	if err := s.startAll(pl, paths, d); err != nil {
+	s.setRunDirs(pl.runDirs)
+	started = true
+	err = s.startAll(ctx, pl, segs, paths, d)
+	s.setBootstrap(nil)
+	if err != nil {
 		_ = s.stopAll()
 		s.dropSysProxy()
 		return ConnectResult{}, err
@@ -146,7 +165,7 @@ func (s *Service) removeSegmentConfigs() {
 }
 
 // startAll launches the processes of a plan, the entry segment first.
-func (s *Service) startAll(pl *connPlan, paths []string, d models.AppData) error {
+func (s *Service) startAll(ctx context.Context, pl *connPlan, segs []profile.Segment, paths []string, d models.AppData) error {
 	last := len(pl.steps) - 1
 	for k := 0; k < last; k++ {
 		l := pl.steps[k].Engine.Launch(pl.installs[k], paths[k])
@@ -159,6 +178,11 @@ func (s *Service) startAll(pl *connPlan, paths []string, d models.AppData) error
 		s.extraMu.Lock()
 		s.extra = append(s.extra, r)
 		s.extraMu.Unlock()
+		if b, ok := pl.steps[k].Engine.(engine.Bootstrapper); ok {
+			if err := b.WaitReady(ctx, segs[k], func(pct int, sum string) { s.setBootstrap(&BootstrapView{Percent: pct, Summary: sum}) }); err != nil {
+				return fmt.Errorf("%w%s; if Tor is blocked on your network, try a bridge in this server's settings", err, logTail(r))
+			}
+		}
 	}
 	l := pl.steps[last].Engine.Launch(pl.installs[last], paths[last])
 	if d.Settings.TUN.Enabled {
@@ -171,8 +195,55 @@ func (s *Service) startAll(pl *connPlan, paths []string, d models.AppData) error
 	return s.run.Start(engine.StartOptions{Binary: l.Binary, Args: l.Args, Env: l.Env})
 }
 
+// logTail is the last lines a process printed, for error messages.
+func logTail(r *engine.Runner) string {
+	lines, _ := r.Logs(0)
+	if len(lines) > 5 {
+		lines = lines[len(lines)-5:]
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return " (log: " + strings.Join(lines, " | ") + ")"
+}
+
+// BootstrapView is the progress of a Tor connection that is still starting.
+type BootstrapView struct {
+	Percent int    `json:"percent"`
+	Summary string `json:"summary"`
+}
+
+func (s *Service) setBootstrap(b *BootstrapView) {
+	s.bootMu.Lock()
+	s.boot = b
+	s.bootMu.Unlock()
+}
+
+func (s *Service) bootstrap() *BootstrapView {
+	s.bootMu.Lock()
+	defer s.bootMu.Unlock()
+	return s.boot
+}
+
+// setRunDirs remembers the per-run directories of the connection that is about
+// to start; stopAll removes them.
+func (s *Service) setRunDirs(dirs []string) {
+	s.bootMu.Lock()
+	s.runDirs = dirs
+	s.bootMu.Unlock()
+}
+
 // stopAll stops the process that serves the user first, then the earlier ones.
 func (s *Service) stopAll() error {
+	defer func() {
+		s.bootMu.Lock()
+		dirs := s.runDirs
+		s.runDirs = nil
+		s.bootMu.Unlock()
+		for _, d := range dirs {
+			_ = os.RemoveAll(d)
+		}
+	}()
 	s.stopTraffic()
 	err := s.run.Stop()
 	s.extraMu.Lock()
@@ -217,6 +288,10 @@ func (s *Service) Recover(ctx context.Context) {
 		if engine.ReapStale(pid, s.enginesDir) {
 			s.log.Warn("stopped a stale engine process from a previous run", "pidfile", filepath.Base(pid))
 		}
+	}
+	stale, _ := filepath.Glob(filepath.Join(s.dir, "tor-run-*"))
+	for _, d := range stale {
+		_ = os.RemoveAll(d)
 	}
 	s.stopStaleHelper()
 	s.recoverSysProxy(ctx)

@@ -43,6 +43,21 @@ NAMED="{\"name\":\"Pair\",\"chain\":[\"$A\",\"$C\"]}"
 curl -s -H "X-Keyway-Token: $TOKEN" "$B/api/nodes" | grep -q '"chain":true' || fail "the chain is listed"
 OVPN='client\ndev tun\nremote v.example 1194\nremote-cert-tls server\n<ca>\nCA\n</ca>\n<cert>\nC\n</cert>\n<key>\nK\n</key>\n'
 curl -s -X POST "${J[@]}" -d "{\"text\":\"$OVPN\"}" "$B/api/import/preview" | grep -q '"protocol":"OpenVPN"' || fail "an .ovpn is recognised"
+# Tor is opt-in: invisible and unusable until switched on.
+TORNODE='{"profile":{"protocol":"tor","tor":{"bridges":"none"}}}'
+curl -s -H "X-Keyway-Token: $TOKEN" "$B/api/engines" | grep -q '"name":"tor"' && fail "Tor engine listed while off"
+[ "$(code -X POST "${J[@]}" -d "$TORNODE" "$B/api/nodes")" = 400 ] || fail "Tor node refused while off"
+SET="$(curl -s -H "X-Keyway-Token: $TOKEN" "$B/api/settings")"
+NEWSET="$(echo "$SET" | sed 's/"torEnabled":false/"torEnabled":true/')"
+echo "$NEWSET" | grep -q '"torEnabled":true' || fail "settings carry torEnabled: $SET"
+[ "$(code -X POST "${J[@]}" -d "$NEWSET" "$B/api/settings")" = 200 ] || fail "enable Tor"
+curl -s -H "X-Keyway-Token: $TOKEN" "$B/api/engines" | grep -q '"name":"tor"' || fail "Tor engine listed once on"
+[ "$(code -X POST "${J[@]}" -d "$TORNODE" "$B/api/nodes")" = 200 ] || fail "Tor node created once on"
+BADLINE='{"profile":{"protocol":"tor","tor":{"bridges":"custom","lines":["obfs4 1.2.3.4:443\\nLog file /tmp/x"]}}}'
+[ "$(code -X POST "${J[@]}" -d "$BADLINE" "$B/api/nodes")" = 400 ] || fail "bridge line with a newline refused"
+NEWSET="$(echo "$SET" | sed 's/"torEnabled":false/"torEnabled":false/')"
+[ "$(code -X POST "${J[@]}" -d "$NEWSET" "$B/api/settings")" = 200 ] || fail "disable Tor"
+curl -s -H "X-Keyway-Token: $TOKEN" "$B/api/nodes" | grep -q '"protocol":"tor"' && fail "Tor nodes hidden while off"
 kill -TERM $PID; wait $PID || true
 [ ! -e "$DIR/api-token" ] || fail "token file not removed on exit"
 echo "smoke OK"

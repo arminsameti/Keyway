@@ -47,7 +47,11 @@ func extractTarGz(path, dest string, src Source) error {
 		if h.Size < 0 || uint64(h.Size) > w.Max {
 			return fmt.Errorf("archive member %s is too large", name)
 		}
-		if err := writeMember(tr, filepath.Join(dest, name), name, w); err != nil {
+		out := name
+		if to, ok := src.Rename[name]; ok {
+			out = to
+		}
+		if err := writeMember(tr, filepath.Join(dest, out), name, w); err != nil {
 			return err
 		}
 		done[name] = true

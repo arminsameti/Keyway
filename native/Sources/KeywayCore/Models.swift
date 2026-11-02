@@ -21,7 +21,14 @@ public struct Status: Codable, Equatable, Sendable {
     public var systemProxyServices: [String] = []
     public var systemProxyOn = false
     public var tunOn = false
+    /// A Tor connection that is still building its first circuit.
+    public var bootstrap: Bootstrap?
     public init() {}
+}
+
+public struct Bootstrap: Codable, Equatable, Sendable {
+    public var percent: Int
+    public var summary: String
 }
 
 public struct Node: Codable, Identifiable, Hashable, Sendable {
@@ -138,6 +145,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var autoDownloadEngines = true
     public var engineUpdateCheck = "weekly"
     public var latencyMethod = "real"
+    public var torEnabled = false
     public var tun = TUNSettings()
     public var ruleSets: [RuleSet] = []
     public var activeRuleSet = ""
@@ -263,7 +271,16 @@ public struct Profile: Codable, Equatable, Sendable {
     public var naive: Naive?
     public var openvpn: OpenVPN?
     public var custom: CustomConfig?
+    public var tor: Tor?
     public init(protocol p: String) { self.protocol = p }
+
+    /// A Tor node: bridge mode (none, obfs4, snowflake, meek, custom) and the
+    /// pasted bridge lines of the custom mode.
+    public struct Tor: Codable, Equatable, Sendable {
+        public var bridges: String = "none"
+        public var lines: [String]?
+        public init() {}
+    }
 
     /// An OpenVPN client profile (TLS mode). Certificates and keys are PEM
     /// text. Every field of the backend's profile is kept so that editing an

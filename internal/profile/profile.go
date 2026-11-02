@@ -40,6 +40,7 @@ type Profile struct {
 	Overrides *Overrides `json:"-"`
 
 	Custom *CustomOpts `json:"custom,omitempty"` // custom: hand-written Xray or sing-box JSON
+	Tor    *TorOpts    `json:"tor,omitempty"`    // tor: bridge mode and custom bridge lines
 
 	UUID       string `json:"uuid,omitempty"`       // vless, vmess, tuic
 	Username   string `json:"username,omitempty"`   // socks, http, naive, ssh
@@ -255,6 +256,9 @@ func (p Profile) validateOpenVPN() error {
 func (p Profile) Validate() error {
 	if p.Protocol == Custom {
 		return p.validateCustom()
+	}
+	if p.Protocol == Tor {
+		return p.validateTor()
 	}
 	if strings.TrimSpace(p.Server) == "" {
 		return fmt.Errorf("missing server address")

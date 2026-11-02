@@ -45,10 +45,14 @@ func (s *Service) tunFiles() (stop, ready, logf, pid string) {
 func tunOptions(t models.TUNSettings, pl *connPlan) *profile.TUNOptions {
 	o := &profile.TUNOptions{Stack: t.Stack, MTU: t.MTU, Strict: t.Strict}
 	seen := map[string]bool{}
-	for _, in := range pl.installs {
+	for k, in := range pl.installs {
 		if !seen[in.Bin] {
 			seen[in.Bin] = true
 			o.ExcludePaths = append(o.ExcludePaths, in.Bin)
+		}
+		if pl.steps[k].Engine.Name() == engine.NameTor {
+			// lyrebird (obfs4, meek, Snowflake) opens the connections to the bridges
+			o.ExcludePaths = append(o.ExcludePaths, filepath.Join(in.AssetDir, "lyrebird"))
 		}
 	}
 	return o

@@ -5,13 +5,44 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Pinned, not `stable`: golangci-lint v1 cannot read the standard library
+      # of the newest Go. Raise it together with the linter.
       - uses: actions/setup-go@v5
-        with: { go-version: 'stable' }
+        with: { go-version: '1.26' }
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
+      - uses: golangci/golangci-lint-action@v6
+        # built from source with the job's Go
+        with: { version: v1.64.8, install-mode: goinstall }
       - run: make smoke
+  # Builds the whole macOS app (Swift, universal Go backend, signing), so a
+  # packaging problem shows up in the pull request and not at release time.
+  # The job keeps its old name, "swift", so required-check settings still match.
   swift:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - run: swift build --package-path native
+      - uses: actions/setup-go@v5
+        with: { go-version: 'stable' }
+      - run: make app VERSION=ci
+      - name: Check the bundle
+        run: |
+          app=dist/Keyway.app/Contents/MacOS
+          "$app/keywayd" -version
+          for f in Keyway keywayd keyway-tun-helper; do
+            archs="$(lipo -archs "$app/$f")"
+            echo "$f: $archs"
+            case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) echo "$f is not universal"; exit 1 ;; esac
+          done
+          codesign --verify --deep --strict dist/Keyway.app
+  # Real engines and real connections through local fixture servers.
+  e2e:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: 'stable' }
+      - run: make e2e
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # engine downloads call the GitHub API

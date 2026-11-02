@@ -15,6 +15,7 @@ import (
 var allProtocols = []string{
 	profile.VLESS, profile.VMess, profile.Trojan, profile.Shadowsocks, profile.Hysteria2, profile.WireGuard,
 	profile.SOCKS, profile.HTTP, profile.TUIC, profile.Hysteria, profile.AnyTLS, profile.ShadowTLS, profile.Naive, profile.SSH,
+	profile.Tor,
 }
 
 // EngineView describes one engine for Settings › Engines.
@@ -54,6 +55,7 @@ func (s *Service) engineView(d models.AppData, sl EngineSlot) EngineView {
 		if p == profile.Hysteria2 {
 			probe.Hysteria = nil
 		}
+		probe.Tor = &profile.TorOpts{Bridges: profile.TorBridgeNone}
 		if sl.Engine.Supports(probe) == nil {
 			v.Protocols = append(v.Protocols, profile.ProtocolName(p))
 		}
@@ -64,8 +66,9 @@ func (s *Service) engineView(d models.AppData, sl EngineSlot) EngineView {
 // Engines lists every engine with its install and update state.
 func (s *Service) Engines() []EngineView {
 	d := s.store.Get()
-	out := make([]EngineView, 0, len(s.engines))
-	for _, sl := range s.engines {
+	slots := s.visibleSlots()
+	out := make([]EngineView, 0, len(slots))
+	for _, sl := range slots {
 		out = append(out, s.engineView(d, sl))
 	}
 	return out

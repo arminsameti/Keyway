@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,25 @@ type connPlan struct {
 	names    []string
 	steps    []engine.Step
 	installs []engine.Install // per step
+	runDirs  []string         // per-run state directories (Tor); removed with cleanup
+}
+
+// cleanup removes the plan's per-run directories.
+func (pl *connPlan) cleanup() {
+	for _, d := range pl.runDirs {
+		_ = os.RemoveAll(d)
+	}
+	pl.runDirs = nil
+}
+
+// hasBootstrap reports whether a step needs a bootstrap wait (Tor).
+func (pl *connPlan) hasBootstrap() bool {
+	for _, st := range pl.steps {
+		if _, ok := st.Engine.(engine.Bootstrapper); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (pl *connPlan) finalEngine() engine.Engine { return pl.steps[len(pl.steps)-1].Engine }
@@ -120,7 +140,10 @@ func newBridge() (profile.Bridge, error) {
 
 // segments builds the profile.Segment of every step, joined by bridges: step k
 // listens on bridge k and step k+1 dials through it.
-func (pl *connPlan) segments() ([]profile.Segment, error) {
+//
+// base is where per-run directories of engines that keep state (Tor) are made;
+// "" is a preview, which only needs placeholder values.
+func (pl *connPlan) segments(base string) ([]profile.Segment, error) {
 	bridges := make([]profile.Bridge, len(pl.steps)-1)
 	for i := range bridges {
 		b, err := newBridge()
@@ -138,6 +161,27 @@ func (pl *connPlan) segments() ([]profile.Segment, error) {
 		if k < len(pl.steps)-1 {
 			seg.Listen = &bridges[k]
 		}
+		if _, ok := st.Engine.(engine.Bootstrapper); ok {
+			rt := &profile.Runtime{Dir: "(per-run directory)", ControlPort: 1}
+			if k < len(pl.installs) {
+				rt.AssetDir = pl.installs[k].AssetDir
+			}
+			if base != "" {
+				dir, err := os.MkdirTemp(base, "tor-run-*")
+				if err != nil {
+					pl.cleanup()
+					return nil, err
+				}
+				pl.runDirs = append(pl.runDirs, dir)
+				port, err := engine.FreePort()
+				if err != nil {
+					pl.cleanup()
+					return nil, err
+				}
+				rt.Dir, rt.ControlPort = dir, port
+			}
+			seg.Runtime = rt
+		}
 		segs[k] = seg
 	}
 	return segs, nil
@@ -146,10 +190,11 @@ func (pl *connPlan) segments() ([]profile.Segment, error) {
 // probe measures the plan end to end: throw-away processes for every segment
 // and a real HTTP request through the whole chain.
 func (s *Service) probe(ctx context.Context, pl *connPlan) (int64, error) {
-	segs, err := pl.segments()
+	segs, err := pl.segments(s.dir)
 	if err != nil {
 		return 0, err
 	}
+	defer pl.cleanup()
 	finalPort, err := engine.FreePort()
 	if err != nil {
 		return 0, err
@@ -171,20 +216,37 @@ func (s *Service) probe(ctx context.Context, pl *connPlan) (int64, error) {
 		return 0, err
 	}
 	defer stop()
+	timeoutSingle := proxyTimeout
+	if pl.hasBootstrap() {
+		timeoutSingle = torProbeTimeout
+		for k, st := range pl.steps {
+			if b, ok := st.Engine.(engine.Bootstrapper); ok {
+				if err := b.WaitReady(ctx, segs[k], nil); err != nil {
+					return 0, err
+				}
+			}
+		}
+	}
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(finalPort))
 	if len(pl.hops) == 1 {
-		return engine.URLTest(ctx, addr, "", proxyTimeout)
+		return engine.URLTest(ctx, addr, "", timeoutSingle)
 	}
 	// A chain sets up a tunnel or handshake per hop, and a UDP hop such as
 	// WireGuard retries its first handshake only after 5 s when it started
 	// before the hop in front of it was ready. That is startup cost, not the
 	// chain's latency: warm it up, then time a second request.
 	timeout := chainProbeTimeout(len(pl.hops))
+	if pl.hasBootstrap() && timeout < torProbeTimeout {
+		timeout = torProbeTimeout
+	}
 	if _, err := engine.URLTest(ctx, addr, "", timeout); err != nil {
 		return 0, err
 	}
 	return engine.URLTest(ctx, addr, "", timeout)
 }
+
+// torProbeTimeout is the budget of a request through Tor once it has bootstrapped.
+const torProbeTimeout = 30 * time.Second
 
 // chainProbeTimeout allows each extra hop time to come up.
 func chainProbeTimeout(hops int) time.Duration {
@@ -216,6 +278,13 @@ func (s *Service) checkChain(d models.AppData, ids []string) ([]profile.Profile,
 	hops, names, err := s.hopsOf(d, ids)
 	if err != nil {
 		return nil, nil, err
+	}
+	if !d.Settings.TorEnabled {
+		for _, h := range hops {
+			if h.Protocol == profile.Tor {
+				return nil, nil, errTorOff
+			}
+		}
 	}
 	if err := profile.CheckChain(hops, names); err != nil {
 		return nil, nil, &models.ValidationError{Msg: err.Error()}
@@ -384,7 +453,7 @@ func (s *Service) PreviewConfig(id string) (ConfigPreview, error) {
 		return ConfigPreview{}, &models.ValidationError{Msg: err.Error()}
 	}
 	pl := &connPlan{hops: hops, names: names, steps: steps}
-	segs, err := pl.segments()
+	segs, err := pl.segments("")
 	if err != nil {
 		return ConfigPreview{}, err
 	}
