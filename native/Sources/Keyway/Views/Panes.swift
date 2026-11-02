@@ -282,10 +282,11 @@ struct EnginesPane: View {
                 }
             }
             CardSection(title: "Behavior") {
-                CardRow(label: "When both engines support a protocol", first: true) {
+                CardRow(label: "When more than one engine supports a protocol", first: true) {
                     Picker("Engine preference", selection: settingBinding(model, \.enginePreference)) {
                         Text("Prefer Xray core").tag("xray")
                         Text("Prefer sing-box").tag("sing-box")
+                        Text("Prefer V2Ray core").tag("v2ray")
                     }.labelsHidden().fixedSize()
                 }
                 CardRow(label: "Download an engine when a new server needs it") {
@@ -373,7 +374,7 @@ struct EngineCard: View {
         HStack(alignment: .top, spacing: 14) {
             let badge = Palette.engineBadge(engine.name)
             RoundedRectangle(cornerRadius: 9).fill(badge.bg).frame(width: 36, height: 36)
-                .overlay(Text(engine.name == "xray" ? "X" : "sb").font(.system(size: 13, weight: .heavy)).foregroundStyle(badge.fg))
+                .overlay(Text(engine.name == "xray" ? "X" : engine.name == "v2ray" ? "V2" : "sb").font(.system(size: 13, weight: .heavy)).foregroundStyle(badge.fg))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {

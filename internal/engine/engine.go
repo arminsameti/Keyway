@@ -1,4 +1,4 @@
-// Package engine abstracts the proxy cores (Xray, sing-box): which servers each
+// Package engine abstracts the proxy cores (Xray, sing-box, v2ray-core): which servers each
 // can run, how to build its configuration, how to preflight and launch it. The
 // process runner and the latency probe are shared by all engines.
 package engine
@@ -18,9 +18,12 @@ const (
 	NameXray    = "xray"
 	NameSingBox = "sing-box"
 	NameTor     = "tor"
+	NameV2Ray   = "v2ray"
 
 	// TorDisplayName is the user-facing name of the Tor engine.
 	TorDisplayName = "Tor"
+	// V2RayDisplayName is the user-facing name of the v2ray-core engine.
+	V2RayDisplayName = "V2Ray core"
 )
 
 // Install locates one installed engine version.
@@ -109,12 +112,7 @@ func Select(p profile.Profile, pref string, engines []Engine, installed func(nam
 	if len(capable) == 0 {
 		return nil, fmt.Errorf("%w: %s", ErrNoEngine, strings.Join(reasons, "; "))
 	}
-	for i, e := range capable {
-		if e.Name() == pref && i > 0 {
-			capable[0], capable[i] = capable[i], capable[0]
-			break
-		}
-	}
+	capable = preferredFirst(capable, pref)
 	for _, e := range capable {
 		if installed(e.Name()) {
 			return e, nil
@@ -123,9 +121,20 @@ func Select(p profile.Profile, pref string, engines []Engine, installed func(nam
 	return capable[0], &NotInstalledError{Engine: capable[0]}
 }
 
-// Candidate returns the engine Select would choose, ignoring installation
-// state; used for display ("uses sing-box").
-func Candidate(p profile.Profile, pref string, engines []Engine) (Engine, error) {
-	e, err := Select(p, pref, engines, func(string) bool { return true })
-	return e, err
+// preferredFirst moves the preferred engine to the front and keeps the others in
+// order, so an opt-in engine at the end of the list never promotes the last
+// engine into its place. The input is not changed.
+func preferredFirst(engines []Engine, pref string) []Engine {
+	out := make([]Engine, 0, len(engines))
+	for _, e := range engines {
+		if e.Name() == pref {
+			out = append(out, e)
+		}
+	}
+	for _, e := range engines {
+		if e.Name() != pref {
+			out = append(out, e)
+		}
+	}
+	return out
 }

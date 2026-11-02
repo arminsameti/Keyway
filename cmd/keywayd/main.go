@@ -95,6 +95,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	v2rayCores, err := core.NewManager(filepath.Join(enginesDir, engine.NameV2Ray), core.V2RaySource)
+	if err != nil {
+		return err
+	}
 	runner := engine.NewRunner(filepath.Join(dir, "xray.pid"))
 	svc, err := service.New(service.Config{
 		Store: st,
@@ -102,6 +106,7 @@ func run() error {
 			{Engine: engine.Xray{}, Manager: xrayCores},
 			{Engine: &engine.SingBox{RuleSetPath: sbCores.RuleSetPath}, Manager: sbCores},
 			{Engine: engine.Tor{}, Manager: torCores},
+			{Engine: engine.V2Ray{}, Manager: v2rayCores},
 		},
 		EnginesDir: enginesDir,
 		Runner:     runner, Sys: sysproxy.New(), Logger: log, Dir: dir,
