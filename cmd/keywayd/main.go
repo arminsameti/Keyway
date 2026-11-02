@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"keyway/internal/api"
+	"keyway/internal/appupdate"
 	"keyway/internal/core"
 	"keyway/internal/engine"
 	"keyway/internal/service"
@@ -111,6 +112,7 @@ func run() error {
 		EnginesDir: enginesDir,
 		Runner:     runner, Sys: sysproxy.New(), Logger: log, Dir: dir,
 		AutoDownload: true,
+		AppUpdater:   appupdate.New(version),
 	})
 	if err != nil {
 		return err

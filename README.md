@@ -27,7 +27,7 @@ Keyway is a free, open-source, native macOS app for people who use **Xray-core (
 3. The builds are not notarized yet, so macOS may refuse the first launch. Right-click the app, choose **Open**, then confirm. If that still fails, run `xattr -dr com.apple.quarantine /Applications/Keyway.app` once.
 4. Follow the three onboarding steps: download an engine, add servers, connect.
 
-Check the download against `SHA256SUMS.txt` on the release page. Keyway lives in the menu bar, so you can connect, switch server and toggle the system proxy without opening the window.
+Check the download against `SHA256SUMS.txt` on the release page. Keyway lives in the menu bar, so you can connect, switch server and toggle the system proxy without opening the window. When a newer release exists, Settings › General › Updates and the menu bar say so; **Download** saves the disk image to your Downloads folder, checks it against the release's `SHA256SUMS.txt` and shows it in Finder. Keyway never replaces itself, so you install it the same way as the first time.
 
 ## Features
 
@@ -86,7 +86,7 @@ Share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `tuic
 
 ### Private by design
 
-Everything stays on your Mac in `~/.keyway` (owner-only permissions). Keyway sends nothing anywhere except the engine downloads and the subscription URLs you add. The local API only listens on `127.0.0.1` and is protected by a per-launch token. Keyway is open source under the MIT license, so you can read exactly what it does.
+Everything stays on your Mac in `~/.keyway` (owner-only permissions). Keyway sends nothing anywhere except the engine downloads, the subscription URLs you add, and a once-a-day request to GitHub for the newest Keyway release number. That update check carries nothing that identifies you or your Mac, and you can turn it off in Settings › General › Updates. The local API only listens on `127.0.0.1` and is protected by a per-launch token. Keyway is open source under the MIT license, so you can read exactly what it does.
 
 ### TUN mode and administrator rights
 
@@ -172,6 +172,7 @@ Push a tag like `v0.2.0` (`git tag v0.2.0 && git push origin v0.2.0`). `.github/
 | `internal/profile` | engine-neutral server description, overrides, custom servers |
 | `internal/store` | atomic JSON persistence, backup, corruption quarantine |
 | `internal/core` | list, download and verify engine releases, safe extraction |
+| `internal/appupdate` | find the newest Keyway release and download its disk image, verified against `SHA256SUMS.txt` |
 | `internal/link` | share links, WireGuard, OpenVPN, Clash and sing-box imports ⇄ profiles |
 | `internal/engine` | `Engine` interface, capability-based selection, chain planner, process runner, latency probe |
 | `internal/xray`, `internal/singbox`, `internal/tor` | config builders for each engine (`internal/tor` also reads Tor's bootstrap progress) |

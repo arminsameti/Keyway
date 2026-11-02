@@ -52,6 +52,8 @@ func (s *Service) Run(ctx context.Context) {
 			}
 		}
 
+		s.maybeCheckApp(ctx)
+
 		if d.Settings.SubUpdateHours > 0 {
 			for _, sub := range d.Subscriptions {
 				if time.Since(sub.UpdatedAt) < time.Duration(d.Settings.SubUpdateHours)*time.Hour ||

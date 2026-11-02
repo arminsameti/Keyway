@@ -93,6 +93,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/cores/download", s.coresDownload)
 	mux.HandleFunc("POST /api/cores/use", s.coresUse)
 
+	mux.HandleFunc("GET /api/app-update", s.appUpdate)
+	mux.HandleFunc("POST /api/app-update/check", s.appUpdateCheck)
+	mux.HandleFunc("POST /api/app-update/download", s.appUpdateDownload)
+
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("POST /api/settings", s.putSettings)
 

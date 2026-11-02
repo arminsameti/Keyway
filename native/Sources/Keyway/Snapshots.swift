@@ -49,6 +49,7 @@ enum Snapshots {
             render(NewServerView(target: .newChain, sampleChain: sample).environment(connected), "newserver-chain-\(suffix)",
                    CGSize(width: 760, height: 720), appearance, dir)
             render(SettingsView(tab: "engines").environment(connected), "settings-engines-\(suffix)", CGSize(width: 760, height: 640), appearance, dir)
+            render(SettingsView(tab: "general").environment(connected), "settings-general-\(suffix)", CGSize(width: 760, height: 640), appearance, dir)
             render(OnboardingView().environment(onboarding), "onboarding-\(suffix)", CGSize(width: 720, height: 640), appearance, dir)
         }
     }

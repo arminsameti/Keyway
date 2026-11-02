@@ -78,6 +78,9 @@ func (s *Settings) Normalize() {
 	if s.LatencyMethod == "" {
 		s.LatencyMethod = d.LatencyMethod
 	}
+	if s.AppUpdateCheck == "" {
+		s.AppUpdateCheck = d.AppUpdateCheck
+	}
 	dns := make([]string, 0, len(s.DNS))
 	for _, e := range s.DNS {
 		if e = strings.TrimSpace(e); e != "" {
@@ -126,6 +129,9 @@ func (s Settings) Validate() error {
 	}
 	if !updateChecks[s.EngineUpdateCheck] {
 		add("engine update check must be never, daily or weekly")
+	}
+	if s.AppUpdateCheck != "daily" && s.AppUpdateCheck != "never" {
+		add("app update check must be daily or never")
 	}
 	if !latencyModes[s.LatencyMethod] {
 		add("latency method must be tcp or real")
