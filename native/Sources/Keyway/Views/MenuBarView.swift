@@ -99,6 +99,7 @@ struct MenuBarView: View {
     }
 
     private func subtitle(_ now: Date) -> String {
+        if model.connecting, let b = model.status.bootstrap { return "Tor \(b.percent)%: \(b.summary)" }
         guard model.connected else { return "Traffic is going out directly" }
         var up = model.status.uptimeSec
         if let s = model.status.startedAt, s > .distantPast { up = Int(now.timeIntervalSince(s)) }

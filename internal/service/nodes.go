@@ -46,6 +46,9 @@ type HopView struct {
 func (s *Service) nodeViews(d models.AppData) []NodeView {
 	out := make([]NodeView, 0, len(d.Nodes))
 	for _, n := range d.Nodes {
+		if !d.Settings.TorEnabled && usesTor(d, n) {
+			continue // kept in storage, shown again when Tor is turned back on
+		}
 		out = append(out, s.nodeView(d, n))
 	}
 	return out
@@ -109,6 +112,8 @@ func (in NodeInput) build() (link.Result, error) {
 	return link.Result{}, &models.ValidationError{Msg: "a link or a profile is required"}
 }
 
+var errTorOff = &models.ValidationError{Msg: "Tor is turned off; enable it in Settings"}
+
 // ErrDuplicateNode is returned when the server is already in the list.
 var ErrDuplicateNode = &models.ValidationError{Msg: "this server is already in the list"}
 
@@ -120,6 +125,9 @@ func (s *Service) CreateNode(in NodeInput) (NodeView, error) {
 	res, err := in.build()
 	if err != nil {
 		return NodeView{}, err
+	}
+	if res.Node.Protocol == profile.Tor && !s.torOn() {
+		return NodeView{}, errTorOff
 	}
 	if err := checkOverrides(res.Node, in.Overrides); err != nil {
 		return NodeView{}, err
@@ -181,6 +189,9 @@ func (s *Service) UpdateNode(id string, in NodeInput) (NodeView, error) {
 	if err != nil {
 		return NodeView{}, err
 	}
+	if res.Node.Protocol == profile.Tor && !s.torOn() {
+		return NodeView{}, errTorOff
+	}
 	if err := checkOverrides(res.Node, in.Overrides); err != nil {
 		return NodeView{}, err
 	}
@@ -233,16 +244,49 @@ func (s *Service) TestServer(ctx context.Context, in NodeInput) (int64, error) {
 
 // ---- engines ----
 
+// usesTor reports whether a node is a Tor server or a chain with a Tor hop.
+func usesTor(d models.AppData, n models.Node) bool {
+	if n.Protocol == profile.Tor {
+		return true
+	}
+	for _, id := range n.Chain {
+		if h, ok := d.FindNode(id); ok && h.Protocol == profile.Tor {
+			return true
+		}
+	}
+	return false
+}
+
+// torOn reports whether the opt-in Tor feature is enabled.
+//
+// It reads a cached flag, not the store: engineList is called from inside store
+// updates, which hold the store's lock.
+func (s *Service) torOn() bool { return s.torFlag.Load() }
+
+// visibleSlots are the engines that exist for the user: Tor only while enabled.
+func (s *Service) visibleSlots() []EngineSlot {
+	on := s.torOn()
+	out := make([]EngineSlot, 0, len(s.engines))
+	for _, sl := range s.engines {
+		if sl.Engine.Name() == engine.NameTor && !on {
+			continue
+		}
+		out = append(out, sl)
+	}
+	return out
+}
+
 func (s *Service) engineList() []engine.Engine {
-	out := make([]engine.Engine, len(s.engines))
-	for i, sl := range s.engines {
+	slots := s.visibleSlots()
+	out := make([]engine.Engine, len(slots))
+	for i, sl := range slots {
 		out[i] = sl.Engine
 	}
 	return out
 }
 
 func (s *Service) slot(name string) (EngineSlot, bool) {
-	for _, sl := range s.engines {
+	for _, sl := range s.visibleSlots() {
 		if sl.Engine.Name() == name {
 			return sl, true
 		}

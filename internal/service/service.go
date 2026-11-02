@@ -11,7 +11,9 @@ import (
 	"log/slog"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"keyway/internal/core"
@@ -74,6 +76,12 @@ type Service struct {
 	extra   []*engine.Runner
 	jobs    jobs // background engine downloads
 
+	torFlag atomic.Bool // Settings.TorEnabled, readable while the store is locked
+
+	bootMu  sync.Mutex
+	boot    *BootstrapView // progress of a Tor step that is still bootstrapping
+	runDirs []string       // per-run directories of the running connection
+
 	life   sync.Mutex // serialises connect / disconnect / reconnect
 	subMu  sync.Mutex // serialises subscription refreshes
 	coreMu sync.Mutex // serialises core downloads
@@ -102,6 +110,7 @@ func New(c Config) (*Service, error) {
 		verCache: map[string]string{}, tagCache: map[string]map[string]bool{},
 		fetch: safeFetch,
 	}
+	s.torFlag.Store(c.Store.Get().Settings.TorEnabled)
 	s.run.OnExit(s.onEngineExit)
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate data: %w", err)
@@ -194,6 +203,7 @@ type State struct {
 	Running       bool                  `json:"running"`
 	Warning       string                `json:"warning,omitempty"`
 	SystemProxy   []string              `json:"systemProxyServices"`
+	Bootstrap     *BootstrapView        `json:"bootstrap,omitempty"` // a Tor connection that is still starting
 }
 
 // State returns the current snapshot.
@@ -208,6 +218,7 @@ func (s *Service) State() State {
 		Running:       s.run.IsRunning(),
 		Warning:       s.store.Warning(),
 		SystemProxy:   s.sysEnabledCopy(),
+		Bootstrap:     s.bootstrap(),
 	}
 }
 
@@ -242,6 +253,8 @@ type Status struct {
 	SystemProxy     []string `json:"systemProxyServices"`
 	SystemProxyOn   bool     `json:"systemProxyOn"`
 	TUNOn           bool     `json:"tunOn"` // all traffic is captured by a TUN interface
+
+	Bootstrap *BootstrapView `json:"bootstrap,omitempty"` // a Tor connection that is still starting
 }
 
 // Status returns the runner state plus what is connected.
@@ -252,6 +265,7 @@ func (s *Service) Status() Status {
 		SystemProxy: s.sysEnabledCopy(), ActiveLatencyMs: models.LatencyUnknown,
 	}
 	st.SystemProxyOn = len(st.SystemProxy) > 0
+	st.Bootstrap = s.bootstrap()
 	id := d.ActiveNodeID
 	if st.Running {
 		cur := s.current()
@@ -367,7 +381,13 @@ func (s *Service) UpdateSettings(ctx context.Context, in models.Settings) (Setti
 	}); err != nil {
 		return SettingsResult{}, err
 	}
+	s.torFlag.Store(in.TorEnabled)
 	res := SettingsResult{RestartRequired: old.APIPort != in.APIPort}
+	if old.TorEnabled && !in.TorEnabled && strings.Contains(s.current().Label, engine.TorDisplayName) && s.run.IsRunning() {
+		if err := s.Disconnect(ctx); err != nil {
+			s.log.Warn("disconnect after turning Tor off", "err", err)
+		}
+	}
 	if s.run.IsRunning() {
 		res.ReconnectRequired = !reflect.DeepEqual(configRelevant(old), configRelevant(in))
 		if old.AutoSystemProxy != in.AutoSystemProxy {

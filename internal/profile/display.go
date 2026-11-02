@@ -8,7 +8,7 @@ import (
 var protocolNames = map[string]string{
 	VLESS: "VLESS", VMess: "VMess", Trojan: "Trojan", Shadowsocks: "Shadowsocks", SOCKS: "SOCKS",
 	HTTP: "HTTP", Hysteria2: "Hysteria2", WireGuard: "WireGuard", TUIC: "TUIC", Hysteria: "Hysteria",
-	AnyTLS: "AnyTLS", ShadowTLS: "ShadowTLS", Naive: "NaiveProxy", SSH: "SSH", OpenVPN: "OpenVPN", Chain: "Chain", Custom: "Custom",
+	AnyTLS: "AnyTLS", ShadowTLS: "ShadowTLS", Naive: "NaiveProxy", SSH: "SSH", OpenVPN: "OpenVPN", Tor: "Tor", Chain: "Chain", Custom: "Custom",
 }
 
 var transportNames = map[string]string{

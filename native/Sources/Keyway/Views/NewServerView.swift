@@ -102,7 +102,7 @@ struct NewServerView: View {
                 .tag("custom")
                 .accessibilityLabel("Custom Config, your own Xray or sing-box JSON")
             }
-            ForEach([("xray", "Xray core"), ("sing-box", "sing-box")], id: \.0) { engine, title in
+            ForEach([("xray", "Xray core"), ("sing-box", "sing-box")] + (model.settings.torEnabled ? [("tor", "Tor")] : []), id: \.0) { engine, title in
                 Section(title) {
                     ForEach(ServerForms.all.filter { $0.engine == engine }) { d in
                         VStack(alignment: .leading, spacing: 1) {

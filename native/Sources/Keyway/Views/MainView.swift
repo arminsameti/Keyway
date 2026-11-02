@@ -219,6 +219,7 @@ struct ConnectionCard: View {
     }
 
     private func subtitle(node: Node?, now: Date) -> String {
+        if model.connecting, let b = model.status.bootstrap { return "Tor \(b.percent)%: \(b.summary)" }
         if model.connected {
             var uptime = model.status.uptimeSec
             if let start = model.status.startedAt, start > .distantPast { uptime = Int(now.timeIntervalSince(start)) }

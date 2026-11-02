@@ -118,6 +118,9 @@ public enum ServerForms {
                     auth: [.text("username", "User", "root"), .select("sshAuth", "Authentication", ["Private key", "Password"]),
                            .text("keyPath", "Private key file", "~/.ssh/id_ed25519", mono: true),
                            .text("hostKey", "Host key", "Optional, pins the server", mono: true)], transport: false, tls: false, udp: false),
+        ProtocolDef(id: "tor", label: "Tor", hint: "Onion routing, bridges", engine: "tor",
+                    about: "Routes through the Tor network. Use it alone, or as a hop in a chain. UDP hops cannot follow it.", backend: "tor",
+                    auth: [], transport: false, tls: false, udp: false),
         ProtocolDef(id: "openvpn", label: "OpenVPN", hint: "UDP or TCP, .ovpn files", engine: "sing-box",
                     about: "The classic VPN. Open an .ovpn file to fill this in; it runs without administrator rights.", backend: "openvpn",
                     auth: [.text("username", "Username", "Optional with a client certificate"), .secret("password", "Password", "Optional"),
@@ -181,7 +184,18 @@ public struct ServerForm: Equatable, Sendable {
 
     // MARK: sections
 
+    static let torBridges = ["None", "obfs4", "Snowflake", "meek", "Custom"]
+
     public var sections: [FormSection] {
+        if protocolID == "tor" {
+            var bridges: [FormField] = [.select("bridges", "Bridges", ServerForm.torBridges)]
+            if choice("bridges", in: bridges) == "Custom" {
+                bridges.append(.multiline("lines", "Bridge lines", "obfs4 192.0.2.1:443 FINGERPRINT cert=… iat-mode=0"))
+            }
+            return [FormSection(title: "Server", fields: [.text("name", "Name", "Shown in the server list")], note: nil),
+                    FormSection(title: "Bridges", fields: bridges,
+                                note: "Bridges help where Tor is blocked. Snowflake cannot be used behind another hop in a chain. Get custom lines from bridges.torproject.org.")]
+        }
         let d = def
         var serverFields: [FormField] = [
             .text("name", "Name", "Shown in the server list"), .text("address", "Address", "server.example.net or IP"),
@@ -255,6 +269,17 @@ public struct ServerForm: Equatable, Sendable {
     public func profile() throws -> (name: String, profile: Profile) {
         let d = def
         var p = Profile(protocol: d.backend)
+        if protocolID == "tor" {
+            var t = Profile.Tor()
+            t.bridges = choice("bridges", in: sections[1].fields).lowercased()
+            if t.bridges == "custom" {
+                let lines = value("lines").split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                guard !lines.isEmpty else { throw FormError(message: "Paste at least one bridge line.") }
+                t.lines = lines
+            }
+            p.tor = t
+            return (trimmed("name"), p)
+        }
         p.server = trimmed("address")
         guard !p.server.isEmpty else { throw FormError(message: "Enter the server address.") }
         let portText = trimmed("port").isEmpty ? portPlaceholder : trimmed("port")
@@ -465,6 +490,10 @@ public struct ServerForm: Equatable, Sendable {
         set("alpn", p.security.alpn?.joined(separator: ", "))
         set("pin", p.security.pinSha256)
         switch d.id {
+        case "tor":
+            let mode = p.tor?.bridges ?? "none"
+            values["bridges"] = ServerForm.torBridges.first { $0.lowercased() == mode } ?? "None"
+            set("lines", p.tor?.lines?.joined(separator: "\n"))
         case "vless", "vmess", "trojan":
             values["flow"] = (p.flow?.isEmpty ?? true) ? "None" : p.flow
             set("alterId", p.alterId.map(String.init))

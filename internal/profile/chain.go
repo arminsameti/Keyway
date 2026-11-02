@@ -39,7 +39,16 @@ func CheckChain(hops []Profile, names []string) error {
 		}
 		return fmt.Sprintf("%d (%s)", i+1, ProtocolName(hops[i].Protocol))
 	}
+	tors := 0
 	for i, h := range hops {
+		if h.Protocol == Tor {
+			if tors++; tors > 1 {
+				return fmt.Errorf("a chain can contain only one Tor hop")
+			}
+			if i > 0 && h.Tor != nil && h.Tor.Bridges == TorBridgeSnowflake {
+				return fmt.Errorf("hop %s uses Snowflake, which needs UDP and cannot go through the hop before it", label(i))
+			}
+		}
 		if err := h.Validate(); err != nil {
 			return fmt.Errorf("hop %s: %w", label(i), err)
 		}

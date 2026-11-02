@@ -26,6 +26,16 @@ type Segment struct {
 	Listen   *Bridge
 	Stats    *StatsAPI
 	TUN      *TUNOptions
+	Runtime  *Runtime
+}
+
+// Runtime is the per-run state of an engine that keeps files and a control
+// connection (Tor): a private directory, the engine's install directory and a
+// loopback control port.
+type Runtime struct {
+	Dir         string
+	AssetDir    string
+	ControlPort int
 }
 
 // TUNOptions asks the segment that serves the user to capture all traffic

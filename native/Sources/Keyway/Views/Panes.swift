@@ -245,11 +245,37 @@ struct EnginesPane: View {
     @State private var http = ""
     @State private var lanUser = ""
     @State private var lanPass = ""
+    @State private var confirmTorOff = false
+
+    /// Tor is opt-in. Turning it off while connected through Tor ends that connection, so it asks first.
+    private var torBinding: Binding<Bool> {
+        Binding(get: { model.settings.torEnabled }, set: { on in
+            if !on, model.connected, (model.status.engineLabel ?? "").contains("Tor") { confirmTorOff = true; return }
+            var s = model.settings
+            s.torEnabled = on
+            model.save(s)
+        })
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
+            CardSection(title: "Tor",
+                        caption: "Adds Tor servers and lets you put Tor in a chain. Turned off by default: nothing about Tor is shown or downloaded until you turn it on.") {
+                CardRow(label: "Enable Tor", first: true) {
+                    Toggle("Enable Tor", isOn: torBinding).labelsHidden().toggleStyle(.checkbox)
+                }
+            }
+            .confirmationDialog("Turn off Tor?", isPresented: $confirmTorOff) {
+                Button("Turn off and disconnect", role: .destructive) {
+                    var s = model.settings
+                    s.torEnabled = false
+                    model.save(s)
+                }
+            } message: {
+                Text("You are connected through Tor. Turning it off disconnects you. Your Tor servers are kept and come back when you turn Tor on again.")
+            }
             CardSection(title: "Proxy engines",
-                        caption: "Each server runs on the engine that supports its protocol. Downloads come from the official GitHub releases and are checked against their SHA-256 checksums.") {
+                        caption: "Each server runs on the engine that supports its protocol. Downloads come from the official releases (GitHub, and the Tor Project for Tor) and are checked against their SHA-256 checksums.") {
                 ForEach(Array(model.engines.enumerated()), id: \.element.id) { i, e in
                     if i > 0 { Divider().padding(.leading, 64) }
                     EngineCard(engine: e)

@@ -169,6 +169,12 @@ func ProfileNode(p profile.Profile, name string) (Result, error) {
 			name = "Custom " + map[string]string{"xray": "Xray", "sing-box": "sing-box"}[p.Custom.Engine]
 		}
 	}
+	if p.Protocol == profile.Tor {
+		p.Server, p.Port = "Tor network", 0 // no server of its own; shown in the list
+		if strings.TrimSpace(name) == "" {
+			name = "Tor"
+		}
+	}
 	if strings.TrimSpace(name) == "" {
 		name = fmt.Sprintf("%s-%s:%d", p.Protocol, p.Server, p.Port)
 	}

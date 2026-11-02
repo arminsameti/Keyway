@@ -61,6 +61,23 @@ type Source struct {
 	Files map[string]Member
 	// Assets lists release asset names for this platform, best first.
 	Assets func(version string) ([]string, error)
+	// Provider, when set, replaces the GitHub release channel (Repo, Assets and
+	// Checksum are unused); Hosts then lists the hosts downloads may come from.
+	Provider Provider
+	Hosts    []string
+	// Rename maps an archive member (as listed in Files) to the name it is
+	// written under; members not listed keep their name.
+	Rename map[string]string
+	// PostInstall runs on the staged directory before it is moved into place.
+	PostInstall func(dir string) error
+}
+
+// Provider is a release channel other than GitHub releases.
+type Provider interface {
+	// Latest returns the newest stable version tag (vMAJOR.MINOR.PATCH).
+	Latest(ctx context.Context, c *http.Client) (string, error)
+	// Asset returns the archive URL for this platform and its SHA-256.
+	Asset(ctx context.Context, c *http.Client, version string) (url, sha256 string, err error)
 }
 
 // XraySource is the official Xray-core release channel.
@@ -120,6 +137,17 @@ func NewManager(dir string, src Source) (*Manager, error) {
 		return nil, fmt.Errorf("create engine dir: %w", err)
 	}
 	m := &Manager{src: src, dir: dir, apiBase: defaultAPIBase, allowHost: githubHost}
+	if len(src.Hosts) > 0 {
+		m.allowHost = func(h string) bool {
+			h = strings.ToLower(h)
+			for _, a := range src.Hosts {
+				if h == a {
+					return true
+				}
+			}
+			return false
+		}
+	}
 	m.client = &http.Client{
 		Timeout: 10 * time.Minute,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -238,6 +266,17 @@ func (m *Manager) get(ctx context.Context, rawURL string, accept string, limit i
 
 // FetchReleases lists recent stable releases (no drafts or prereleases).
 func (m *Manager) FetchReleases(ctx context.Context, limit int) ([]Release, error) {
+	if p := m.src.Provider; p != nil {
+		v, err := p.Latest(ctx, m.client)
+		if err != nil {
+			return nil, fmt.Errorf("list releases: %w", err)
+		}
+		inst := false
+		for _, i := range m.Installed() {
+			inst = inst || i == v
+		}
+		return []Release{{Tag: v, Name: v, Installed: inst}}, nil
+	}
 	if limit <= 0 || limit > 50 {
 		limit = 10
 	}
@@ -298,6 +337,21 @@ func (m *Manager) Download(ctx context.Context, version string) error {
 	version = NormalizeVersion(version)
 	if !ValidVersion(version) {
 		return fmt.Errorf("invalid %s version %q (expected like v25.1.1)", m.src.Name, version)
+	}
+	if p := m.src.Provider; p != nil {
+		u, want, err := p.Asset(ctx, m.client, version)
+		if err != nil {
+			return err
+		}
+		zipPath, got, err := m.downloadArchive(ctx, u)
+		if err != nil {
+			return err
+		}
+		defer os.Remove(zipPath)
+		if got != want {
+			return fmt.Errorf("checksum mismatch for %s: expected %s, got %s", m.src.Name, want, got)
+		}
+		return m.install(zipPath, version)
 	}
 	candidates, err := m.src.Assets(version)
 	if err != nil {
@@ -428,6 +482,11 @@ func (m *Manager) install(zipPath, version string) error {
 	if err := extract(zipPath, stage, m.src); err != nil {
 		return err
 	}
+	if m.src.PostInstall != nil {
+		if err := m.src.PostInstall(stage); err != nil {
+			return err
+		}
+	}
 	if err := os.WriteFile(filepath.Join(stage, "VERSION"), []byte(version), 0o644); err != nil {
 		return err
 	}
@@ -481,8 +540,10 @@ func VersionOf(binaryPath string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, binaryPath, "version").Output()
-	if err != nil {
-		return ""
+	if err != nil { // Tor takes --version
+		if out, err = exec.CommandContext(ctx, binaryPath, "--version").Output(); err != nil {
+			return ""
+		}
 	}
 	first, _, _ := strings.Cut(string(out), "\n")
 	return strings.TrimSpace(first)
