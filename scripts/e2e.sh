@@ -116,6 +116,48 @@ connect_to "$CH"
 grep -q ":$VL_PORT" "$ROOT/server-ss1.log" || fail "first hop did not carry the connection to the second hop"
 via server-vless.log; ok "the chain went through both servers in order"
 
+echo "== Mihomo (opt-in)"
+# Mihomo is downloaded as a single gzip file and checked against the digest GitHub reports.
+[ "$(api POST /api/engines/mihomo/download '{}' | jget "d.get('ok')")" = True ] || fail "download mihomo"
+ok "downloaded mihomo"
+# Nobody is moved onto it by installing it: the default preference still picks Xray.
+set_settings "s['enginePreference']='xray'"
+[ "$(api GET /api/nodes | jget "[n['engine'] for n in d['nodes'] if n['id']=='$SS_ID'][0]")" = xray ] || fail "an installed Mihomo took over a server under the Xray preference"
+ok "installing Mihomo changes nothing under the default preference"
+set_settings "s['enginePreference']='mihomo'"
+connect_to "$SS_ID"
+LABEL="$(running_label)"; [ "$LABEL" = "Mihomo" ] || fail "expected Mihomo, got '$LABEL'"
+: > "$ROOT/server-ss1.log"
+[ "$(fetch)" = "e2e-ok" ] || fail "page not fetched through Shadowsocks/Mihomo"
+via server-ss1.log; ok "Shadowsocks over Mihomo carried the request"
+sleep 2; fetch >/dev/null
+[ "$(api GET /api/traffic | jget "d['upTotal'] > 0 and d['downTotal'] > 0")" = True ] || fail "no traffic counted for Mihomo"
+ok "traffic counters work through Mihomo's controller"
+: > "$ROOT/server-ss1.log"; : > "$ROOT/server-vless.log"
+connect_to "$CH"
+LABEL="$(running_label)"; [ "$LABEL" = "Mihomo" ] || fail "expected one Mihomo process for the chain, got '$LABEL'"
+[ "$(fetch)" = "e2e-ok" ] || fail "page not fetched through the chain on Mihomo"
+grep -q ":$VL_PORT" "$ROOT/server-ss1.log" || fail "first hop did not carry the connection to the second hop (Mihomo)"
+via server-vless.log; ok "the chain went through both servers in order on Mihomo"
+# Default-style routing needs geo data: Keyway fetches it, verified, before Mihomo starts.
+set_settings "s['routingMode']='bypass-private'"
+connect_to "$SS_ID"
+[ -s "$DIR/engines/mihomo/data/GeoSite.dat" ] || fail "the geo data was not fetched"
+[ "$(fetch)" = "e2e-ok" ] || fail "page not fetched with geo routing on Mihomo"
+ok "geo routing works on Mihomo with verified geo data"
+# Per-app rules (like TUN) only sing-box can do: it serves the apps and Mihomo feeds it through a bridge.
+set_settings "
+s['routingMode']='rules'; s['blockAds']=False
+s['ruleSets']=[{'id':'e2e','name':'e2e','rules':[{'id':'r1','enabled':True,'entries':['process:no-such-program'],'outbound':'direct'}]}]
+s['activeRuleSet']='e2e'"
+: > "$ROOT/server-ss1.log"
+connect_to "$SS_ID"
+LABEL="$(running_label)"; [ "$LABEL" = "Mihomo + sing-box" ] || fail "expected Mihomo + sing-box for per-app rules, got '$LABEL'"
+[ "$(fetch)" = "e2e-ok" ] || fail "page not fetched through Mihomo behind a sing-box relay"
+via server-ss1.log; ok "per-app rules put a sing-box relay in front of Mihomo, and traffic still flows"
+set_settings "s['routingMode']='global'; s['enginePreference']='xray'"
+disconnect
+
 echo "== latency test through the engines"
 LAT="$(api POST /api/latency '{"mode":"real"}')"
 [ "$(echo "$LAT" | jget "d['latency']['$SS_ID'] > 0")" = True ] || fail "real latency of the Shadowsocks server: $LAT"

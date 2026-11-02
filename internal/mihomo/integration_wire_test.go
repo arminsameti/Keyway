@@ -4,10 +4,16 @@ package mihomo
 // integration_test.go for how to run these).
 
 import (
+	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -116,7 +122,6 @@ func TestIntegrationDefaultRoutingWithGeodata(t *testing.T) {
 	relayed := newRelay(t, exitPort)
 	exit := profile.Profile{Protocol: profile.VMess, Server: "127.0.0.1", Port: relayed.port, UUID: testUUID, Cipher: "auto", Transport: profile.Transport{Type: "tcp"}}
 	s := models.DefaultSettings()
-	s.RuleSets = nil
 	s.Inbounds = []models.Inbound{{Tag: "socks-in", Protocol: "socks", Port: freePort(t), Listen: "127.0.0.1", Enabled: true}}
 	s.RoutingMode = "rules"
 	s.RuleSets = []models.RuleSet{{ID: "a", Name: "a", Rules: []models.RouteRule{
@@ -124,12 +129,8 @@ func TestIntegrationDefaultRoutingWithGeodata(t *testing.T) {
 	s.ActiveRuleSet = "a"
 	for _, mode := range []string{"bypass-private", "rules"} {
 		s.RoutingMode = mode
-		b, err := BuildConfig(profile.Single(exit), s)
-		if err != nil {
-			t.Fatal(err)
-		}
 		s.Inbounds[0].Port = freePort(t)
-		b, err = BuildConfig(profile.Single(exit), s)
+		b, err := BuildConfig(profile.Single(exit), s)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -142,6 +143,52 @@ func TestIntegrationDefaultRoutingWithGeodata(t *testing.T) {
 		if via := relayed.bytes.Load() != before; via != (mode == "rules") {
 			t.Errorf("%s: loopback went through the proxy = %v", mode, via)
 		}
+	}
+}
+
+// With sniffing on, a domain rule applies to a connection made by IP address: the
+// name is read from the TLS ClientHello. With it off, the rule cannot match.
+func TestIntegrationSniffingFeedsDomainRules(t *testing.T) {
+	needBin(t, "KEYWAY_MIHOMO_BIN")
+	cert := newCert(t, t.TempDir())
+	site := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "site") }))
+	site.TLS = &tls.Config{Certificates: []tls.Certificate{cert.tlsCert}}
+	site.StartTLS()
+	t.Cleanup(site.Close)
+	addr := site.Listener.Addr().String()
+
+	s := models.DefaultSettings()
+	s.RoutingMode, s.BlockAds = "rules", false
+	s.RuleSets = []models.RuleSet{{ID: "a", Name: "a", Rules: []models.RouteRule{
+		{ID: "1", Enabled: true, Entries: []string{"full:blocked.example"}, Outbound: "block"}}}}
+	s.ActiveRuleSet = "a"
+	// the proxy is never reached: everything that is not blocked goes direct
+	dead := profile.Profile{Protocol: profile.SOCKS, Server: "127.0.0.1", Port: 1}
+	reachable := func(sniffing bool) bool {
+		s.Sniffing = sniffing
+		socks := freePort(t)
+		s.Inbounds = []models.Inbound{{Tag: "socks-in", Protocol: "socks", Port: socks, Listen: "127.0.0.1", Enabled: true}}
+		s.RuleSets[0].Rules = append(s.RuleSets[0].Rules[:1:1], models.RouteRule{ID: "2", Enabled: true, Entries: []string{"127.0.0.0/8"}, Outbound: "direct"})
+		b, err := BuildConfig(profile.Single(dead), s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		startMihomo(t, b, socks)
+		u := &url.URL{Scheme: "socks5h", Host: net.JoinHostPort("127.0.0.1", strconv.Itoa(socks))}
+		client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{Proxy: http.ProxyURL(u), DisableKeepAlives: true,
+			TLSClientConfig: &tls.Config{ServerName: "blocked.example", InsecureSkipVerify: true}}}
+		resp, err := client.Get("https://" + addr + "/")
+		if err != nil {
+			return false
+		}
+		resp.Body.Close()
+		return true
+	}
+	if reachable(true) {
+		t.Error("with sniffing on, the server name in the ClientHello did not trigger the block rule")
+	}
+	if !reachable(false) {
+		t.Error("with sniffing off, the connection should not have been blocked")
 	}
 }
 

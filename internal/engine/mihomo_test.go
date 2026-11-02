@@ -81,7 +81,7 @@ func TestMihomoPreferencePicksSupportedServers(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, []string{"mihomo:0-1"}) {
 		t.Fatalf("vmess: %v, %v", got, err)
 	}
-	// Hysteria2 and AnyTLS in one chain: Mihomo cannot chain UDP hops, sing-box can
+	// a TCP chain Mihomo cannot run whole (AnyTLS inside a chain) is not split in Mihomo's favour
 	got, err = plan(t, []profile.Profile{vlessTLSHop(), anyTLSHop()}, NameMihomo, withMihomo(), everyInstalled, "")
 	if err != nil || len(got) != 1 {
 		t.Fatalf("tcp chain: %v, %v", got, err)
