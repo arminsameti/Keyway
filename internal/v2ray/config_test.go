@@ -30,16 +30,18 @@ func with(p profile.Profile, f func(*profile.Profile)) profile.Profile {
 
 func TestSupportsAllowed(t *testing.T) {
 	cases := map[string]profile.Profile{
-		"vmess tcp":   vmess("tcp"),
-		"vmess ws":    vmess("ws"),
-		"vmess grpc":  vmess("grpc"),
-		"vmess h2":    with(vmess("h2"), func(p *profile.Profile) { p.Security = tlsSec() }),
-		"vmess kcp":   vmess("kcp"),
-		"vless tls":   vless(),
-		"trojan tls":  {Protocol: profile.Trojan, Server: "a.example", Port: 443, Password: "p", Transport: profile.Transport{Type: "tcp"}, Security: tlsSec()},
-		"shadowsocks": {Protocol: profile.Shadowsocks, Server: "a.example", Port: 443, Cipher: "aes-128-gcm", Password: "p"},
-		"socks":       {Protocol: profile.SOCKS, Server: "a.example", Port: 1080},
-		"http":        {Protocol: profile.HTTP, Server: "a.example", Port: 8080},
+		"vmess tcp":      vmess("tcp"),
+		"vmess ws":       vmess("ws"),
+		"vmess grpc":     vmess("grpc"),
+		"vmess h2":       with(vmess("h2"), func(p *profile.Profile) { p.Security = tlsSec() }),
+		"vmess kcp":      vmess("kcp"),
+		"kcp srtp":       with(vmess("kcp"), func(p *profile.Profile) { p.Transport.HeaderType = "srtp" }),
+		"ws plain query": with(vmess("ws"), func(p *profile.Profile) { p.Transport.Path = "/w?a=1" }),
+		"vless tls":      vless(),
+		"trojan tls":     {Protocol: profile.Trojan, Server: "a.example", Port: 443, Password: "p", Transport: profile.Transport{Type: "tcp"}, Security: tlsSec()},
+		"shadowsocks":    {Protocol: profile.Shadowsocks, Server: "a.example", Port: 443, Cipher: "aes-128-gcm", Password: "p"},
+		"socks":          {Protocol: profile.SOCKS, Server: "a.example", Port: 1080},
+		"http":           {Protocol: profile.HTTP, Server: "a.example", Port: 8080},
 	}
 	for name, p := range cases {
 		if err := Supports(p); err != nil {
@@ -70,6 +72,11 @@ func TestSupportsRejected(t *testing.T) {
 		"insecure pinned":      with(vless(), func(p *profile.Profile) { p.Security.Insecure = true; p.Security.PinSHA256 = "ab" }),
 		"grpc authority":       with(vmess("grpc"), func(p *profile.Profile) { p.Transport.Authority = "x" }),
 		"fragment override":    with(vless(), func(p *profile.Profile) { p.Overrides = &profile.Overrides{Fragment: &profile.Fragment{}} }),
+		"grpc multi":           with(vmess("grpc"), func(p *profile.Profile) { p.Transport.Mode = "multi" }),
+		"ws early data":        with(vmess("ws"), func(p *profile.Profile) { p.Transport.Path = "/w?ed=2048" }),
+		"xchacha":              {Protocol: profile.Shadowsocks, Server: "a.example", Port: 443, Cipher: "xchacha20-ietf-poly1305", Password: "p"},
+		"cfb":                  {Protocol: profile.Shadowsocks, Server: "a.example", Port: 443, Cipher: "aes-128-cfb", Password: "p"},
+		"kcp dns header":       with(vmess("kcp"), func(p *profile.Profile) { p.Transport.HeaderType = "dns" }),
 		"fingerprint":          with(vless(), func(p *profile.Profile) { p.Security.Fingerprint = "chrome" }),
 		"fingerprint override": with(vless(), func(p *profile.Profile) { p.Overrides = &profile.Overrides{Fingerprint: "chrome"} }),
 	}
@@ -142,6 +149,12 @@ func TestBuildConfigUpstream(t *testing.T) {
 	}
 }
 
+func TestBuildConfigGRPC(t *testing.T) {
+	if _, err := BuildConfig(profile.Single(vmess("grpc")), models.DefaultSettings()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestProbeConfigChain(t *testing.T) {
 	b, err := ProbeConfig(profile.Segment{Hops: []profile.Profile{vmess("tcp"), vless()}}, 2001)
 	if err != nil {
@@ -160,13 +173,13 @@ func TestBuildConfigRejectsUnsupportedHop(t *testing.T) {
 }
 
 func TestRefuseXrayKeys(t *testing.T) {
-	for _, key := range []string{"dialerProxy", "realitySettings", "xhttpSettings", "httpupgradeSettings", "flow", "pinnedPeerCertSha256", "fragment"} {
+	for _, key := range []string{"dialerProxy", "realitySettings", "xhttpSettings", "httpupgradeSettings", "flow", "pinnedPeerCertSha256", "fragment", "fingerprint", "multiMode", "authority"} {
 		err := refuseXrayKeys([]byte(`{"outbounds":[{"a":{"` + key + `":"x"}}]}`))
 		if err == nil || !strings.Contains(err.Error(), key) {
 			t.Errorf("%s: err = %v", key, err)
 		}
 	}
-	if err := refuseXrayKeys([]byte(`{"outbounds":[{"tag":"proxy"}]}`)); err != nil {
+	if err := refuseXrayKeys([]byte(`{"outbounds":[{"tag":"proxy","multiMode":false,"authority":""}]}`)); err != nil {
 		t.Errorf("clean config: %v", err)
 	}
 }

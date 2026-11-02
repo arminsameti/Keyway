@@ -8,12 +8,31 @@ package v2ray
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
+	"net/url"
 
 	"keyway/internal/models"
 	"keyway/internal/profile"
 	"keyway/internal/xray"
 )
+
+// ciphers and kcpHeaders are what "v2ray test" accepts of the values Keyway
+// passes on. Exact match: anything else goes to another engine.
+var (
+	ciphers = map[string]bool{
+		"aes-128-gcm": true, "aes-256-gcm": true, "chacha20-poly1305": true, "chacha20-ietf-poly1305": true,
+		"none": true, "plain": true,
+	}
+	kcpHeaders = map[string]bool{
+		"": true, "none": true, "srtp": true, "utp": true, "wechat-video": true, "dtls": true, "wireguard": true,
+	}
+)
+
+// earlyData reports whether a WebSocket path asks for early data with "?ed=",
+// which v2ray-core would send on as a literal query.
+func earlyData(path string) bool {
+	u, err := url.Parse(path)
+	return err != nil || u.Query().Has("ed")
+}
 
 // Supports reports whether v2ray-core can run the profile, with the reason if
 // not. Whatever it accepts also passes xray.Supports, so the Xray builder can
@@ -35,8 +54,8 @@ func Supports(p profile.Profile) error {
 			return fmt.Errorf("VLESS encryption needs Xray core")
 		}
 	case profile.Shadowsocks:
-		if strings.HasPrefix(strings.ToLower(p.Cipher), "2022-") {
-			return fmt.Errorf("Shadowsocks 2022 needs Xray core or sing-box")
+		if !ciphers[p.Cipher] {
+			return fmt.Errorf("the Shadowsocks cipher %s needs Xray core or sing-box", p.Cipher)
 		}
 	default:
 		return fmt.Errorf("%s needs Xray core or sing-box", profile.ProtocolName(p.Protocol))
@@ -47,7 +66,19 @@ func Supports(p profile.Profile) error {
 		return fmt.Errorf("%s security needs Xray core", p.Security.Kind)
 	}
 	switch p.Transport.Type {
-	case "", "tcp", "ws", "grpc", "h2", "kcp":
+	case "", "tcp", "h2":
+	case "ws":
+		if earlyData(p.Transport.Path) {
+			return fmt.Errorf("WebSocket early data needs Xray core")
+		}
+	case "grpc":
+		if p.Transport.Mode == "multi" {
+			return fmt.Errorf("gRPC multi mode needs Xray core")
+		}
+	case "kcp":
+		if !kcpHeaders[p.Transport.HeaderType] {
+			return fmt.Errorf("the mKCP header %s needs Xray core", p.Transport.HeaderType)
+		}
 	default:
 		return fmt.Errorf("the %s transport needs Xray core", p.Transport.Type)
 	}
@@ -134,6 +165,7 @@ func adapt(cfg *xray.Config) {
 var xrayOnlyKeys = map[string]bool{
 	"dialerProxy": true, "realitySettings": true, "xhttpSettings": true, "httpupgradeSettings": true,
 	"flow": true, "pinnedPeerCertSha256": true, "fragment": true,
+	"fingerprint": true, "multiMode": true, "authority": true,
 }
 
 // refuseXrayKeys fails when the config holds an Xray-only key at any depth. That
@@ -150,7 +182,7 @@ func walk(v any) error {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, val := range x {
-			if xrayOnlyKeys[k] {
+			if xrayOnlyKeys[k] && val != false && val != "" {
 				return fmt.Errorf("internal error: v2ray config contains %q", k)
 			}
 			if err := walk(val); err != nil {

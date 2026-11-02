@@ -4,7 +4,6 @@ import (
 	"net/url"
 	"strconv"
 
-	"keyway/internal/engine"
 	"keyway/internal/link"
 	"keyway/internal/profile"
 )
@@ -45,7 +44,7 @@ func (s *Service) PreviewImport(text string) Preview {
 			pi.CountryCode, pi.Name = profile.SplitCountry(it.Result.Node.Name)
 			pi.Protocol, pi.Transport = profile.ProtocolName(p.Protocol), p.DisplayTransport()
 			_, pi.Duplicate = d.FindNode(it.Result.Node.ID)
-			if e, err := engine.Candidate(p, d.Settings.EnginePreference, s.engineList()); err == nil {
+			if e, err := runsOn(p, nil, d.Settings.EnginePreference, s.engineList(), s.installed); err == nil {
 				pi.Engine, pi.EngineName, pi.EngineInstalled = e.Name(), e.DisplayName(), s.installed(e.Name())
 			} else {
 				pi.Status, pi.Reason = link.KindSkipped, err.Error()

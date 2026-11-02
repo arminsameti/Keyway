@@ -65,6 +65,9 @@ func engineProtocols(e engine.Engine) []string {
 		if p == profile.VLESS {
 			probe.Security.Kind = "tls" // cores differ on VLESS without TLS, not on VLESS itself
 		}
+		if p == profile.Shadowsocks {
+			probe.Cipher = "aes-128-gcm" // v2ray-core accepts only the ciphers it can run
+		}
 		probe.Tor = &profile.TorOpts{Bridges: profile.TorBridgeNone}
 		if e.Supports(probe) == nil {
 			out = append(out, profile.ProtocolName(p))
