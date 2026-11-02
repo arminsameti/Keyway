@@ -107,6 +107,44 @@ public enum Format {
         return "Updated " + f.localizedString(for: date, relativeTo: now)
     }
 
+    /// "12.3 GB of 100 GB used", or "12.3 GB used" when the provider gave no limit.
+    public static func usageLine(_ u: SubUsage) -> String {
+        u.total > 0 ? "\(bytes(u.used)) of \(bytes(u.total)) used" : "\(bytes(u.used)) used"
+    }
+
+    /// Share of the quota used, 0...1; nil without a limit.
+    public static func usageFraction(_ u: SubUsage) -> Double? {
+        u.total > 0 ? min(1, max(0, Double(u.used) / Double(u.total))) : nil
+    }
+
+    /// "Expires in 12 days", "Expires today", "Expired 3 days ago"; nil when the plan has no expiry.
+    public static func expiry(_ date: Date?, now: Date = Date(), calendar: Calendar = .current) -> String? {
+        guard let date else { return nil }
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date)).day ?? 0
+        switch days {
+        case 0: return date < now ? "Expired today" : "Expires today"
+        case 1...: return "Expires in \(plural(days, "day"))"
+        default: return "Expired \(plural(-days, "day")) ago"
+        }
+    }
+
+    /// How a group picks its server, for lists.
+    public static func strategyName(_ s: String) -> String {
+        switch s {
+        case "fallback": return "Fallback"
+        case "url-test": return "Fastest"
+        default: return "Manual"
+        }
+    }
+
+    public static func strategyHelp(_ s: String) -> String {
+        switch s {
+        case "fallback": return "Uses the first server in the list that works, and moves on to the next when it stops answering."
+        case "url-test": return "Tests the servers regularly and uses the fastest, staying put unless another is clearly faster."
+        default: return "You choose which server the group uses."
+        }
+    }
+
     public static func formatName(_ format: String?) -> String? {
         switch format {
         case "clash": return "Clash format"

@@ -74,6 +74,13 @@ Turn on **Settings › Engines › Enable Tor** to use the Tor network from Keyw
 
 Share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `tuic://` and more), **subscription URLs**, a **QR code on your screen**, WireGuard `.conf`, OpenVPN `.ovpn`, **Clash YAML** and **sing-box JSON**. Subscriptions refresh automatically.
 
+### Subscription details and groups
+
+- **Usage and expiry.** When your provider sends the standard `Subscription-Userinfo`, `Profile-Title` and `Profile-Update-Interval` headers, Keyway shows traffic used, the quota, an "expires in N days" line and the provider's refresh interval next to the subscription. A provider's interval replaces your global one, but turning automatic refresh off still wins.
+- **Groups** act as one server. Pick **Manual** (you choose the server), **Fallback** (the first server in the list that works) or **Fastest** (re-tested regularly, and it only switches when another server is clearly faster, so it does not flap). Select a group like any server, in the window or the menu bar. Make one by hand, or from a subscription's **Group** menu to cover all its servers.
+- **Clash groups** (`proxy-groups`) of type select, url-test and fallback are imported as groups. load-balance, relay and unknown types are skipped, and the import says so. Entries that are not servers (DIRECT, REJECT, other groups) are left out and counted.
+- A group can hold servers and chains, but a group cannot be a hop inside a chain. While a group is active, "choose fastest automatically" over all servers is paused.
+
 ### Routing and control
 
 - **Routing modes:** global, bypass private and Chinese addresses, or your own **rule sets** (domains, `geosite`, `geoip`, IP ranges, ports, programs). Import rules from Clash or v2rayN and test which rule a destination hits.
@@ -198,6 +205,7 @@ The API binds to 127.0.0.1 and defends against other local pages and processes: 
 - **Rule sets** (`routingMode: "rules"`): ordered rules `{entries, outbound}`, first match wins, default proxy. Entries: `domain:`, `full:`, `keyword:`, `regexp:`, `geosite:`, `geoip:`, CIDR, `port:`, `process:`, `process-path:`, `app:`. `POST /api/routing/import` reads Clash or v2rayN routing and `POST /api/routing/test` shows which rule a destination hits. Process and app entries need sing-box.
 - **Per-app rules** use sing-box `find_process`. When a rule uses one and the server needs Xray, sing-box runs as a relay behind it. Without TUN only programs that use the proxy are seen.
 - **Custom servers** (`protocol: "custom"`) use only the pasted outbounds; the app keeps its own inbounds, routing and DNS. `GET /api/nodes/{id}/config` shows the config that would run for any server.
+- **Groups** (`AppData.groups`, `activeGroupId`): `activeNodeId` always mirrors the active group's current member, so connect logic only ever sees a node. The store reconciles groups on every update (pruned members, dropped groups of removed subscriptions). `url-test` reuses the auto-pick hysteresis and never picks Tor; the background loop re-tests only the active fallback/url-test group.
 - A chain hop's address is dialed by the previous hop's server, so it must be reachable from there.
 - "Real test" measures latency through a temporary instance of the server's engine; TCP mode marks UDP protocols as N/A.
 - `POST /api/import/preview` classifies pasted text without saving or fetching anything.
