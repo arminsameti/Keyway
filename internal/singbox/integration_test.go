@@ -47,8 +47,10 @@ func TestRealSingBoxChecksTheDNSConfigs(t *testing.T) {
 			s.DNSMode, s.DNSDirect = "custom", "tls://223.5.5.5"
 			s.DNS = []string{"1.1.1.1"}
 		},
-		"fakeip":        func(s *models.Settings) { s.TUN.Enabled, s.FakeIP = true, true },
-		"fakeip secure": func(s *models.Settings) { s.TUN.Enabled, s.FakeIP, s.DNSMode, s.DNSDirect = true, true, "secure", "223.5.5.5" },
+		"fakeip": func(s *models.Settings) { s.TUN.Enabled, s.FakeIP = true, true },
+		"fakeip secure": func(s *models.Settings) {
+			s.TUN.Enabled, s.FakeIP, s.DNSMode, s.DNSDirect = true, true, "secure", "223.5.5.5"
+		},
 	}
 	for name, edit := range cases {
 		s := models.DefaultSettings()
