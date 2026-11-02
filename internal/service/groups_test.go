@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -164,9 +165,7 @@ func TestGroupValidationMessages(t *testing.T) {
 }
 
 func asValidation(err error, target **models.ValidationError) bool {
-	ve, ok := err.(*models.ValidationError)
-	*target = ve
-	return ok
+	return errors.As(err, target)
 }
 
 func TestSelectGroupMemberOnlyForSelectGroups(t *testing.T) {
@@ -233,10 +232,10 @@ func TestUpdateAndDeleteGroup(t *testing.T) {
 	if err := svc.DeleteGroup(g.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.DeleteGroup(g.ID); err != ErrGroupNotFound {
+	if err := svc.DeleteGroup(g.ID); !errors.Is(err, ErrGroupNotFound) {
 		t.Errorf("err = %v", err)
 	}
-	if _, err := svc.UpdateGroup("nope", GroupInput{}); err != ErrGroupNotFound {
+	if _, err := svc.UpdateGroup("nope", GroupInput{}); !errors.Is(err, ErrGroupNotFound) {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -319,7 +318,7 @@ func TestEvaluateGroupAllFailed(t *testing.T) {
 	ids := importNodes(t, svc, vlessAt("127.0.0.1", deadPort(t), "D1"), vlessAt("127.0.0.1", deadPort(t), "D2"))
 	g, _ := svc.CreateGroup(GroupInput{Name: "A", Strategy: models.StrategyURLTest, Members: ids})
 	res, err := svc.EvaluateGroup(context.Background(), g.ID, ModeTCP, false)
-	if err != ErrAllFailed {
+	if !errors.Is(err, ErrAllFailed) {
 		t.Fatalf("err = %v", err)
 	}
 	if res.Latency[ids[0]] != models.LatencyFailed {
