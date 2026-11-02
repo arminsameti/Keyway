@@ -85,7 +85,8 @@ type Service struct {
 	appDL        appDownloads
 	downloadsDir string
 
-	torFlag atomic.Bool // Settings.TorEnabled, readable while the store is locked
+	torFlag atomic.Bool                    // Settings.TorEnabled, readable while the store is locked
+	dnsPlan atomic.Pointer[models.DNSPlan] // the DNS settings, likewise
 
 	bootMu  sync.Mutex
 	boot    *BootstrapView // progress of a Tor step that is still bootstrapping
@@ -126,6 +127,7 @@ func New(c Config) (*Service, error) {
 		}
 	}
 	s.torFlag.Store(c.Store.Get().Settings.TorEnabled)
+	s.setDNS(c.Store.Get().Settings)
 	s.run.OnExit(s.onEngineExit)
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate data: %w", err)
@@ -405,6 +407,7 @@ func (s *Service) UpdateSettings(ctx context.Context, in models.Settings) (Setti
 		return SettingsResult{}, err
 	}
 	s.torFlag.Store(in.TorEnabled)
+	s.setDNS(in)
 	res := SettingsResult{RestartRequired: old.APIPort != in.APIPort}
 	if old.TorEnabled && !in.TorEnabled && strings.Contains(s.current().Label, engine.TorDisplayName) && s.run.IsRunning() {
 		if err := s.Disconnect(ctx); err != nil {
