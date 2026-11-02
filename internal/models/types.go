@@ -46,6 +46,21 @@ type Subscription struct {
 	NodeCount int       `json:"nodeCount"`
 	LastError string    `json:"lastError,omitempty"`
 	Format    string    `json:"format,omitempty"` // links | base64 | clash | sing-box
+
+	// Details the provider reports in response headers; all optional.
+	Title       string    `json:"title,omitempty"`       // Profile-Title
+	UpdateHours int       `json:"updateHours,omitempty"` // Profile-Update-Interval, in hours
+	Usage       *SubUsage `json:"usage,omitempty"`       // Subscription-Userinfo
+	Warnings    []string  `json:"warnings,omitempty"`    // what the last import could not use (e.g. unsupported Clash groups)
+}
+
+// SubUsage is the traffic quota a provider reports in Subscription-Userinfo.
+// Total 0 means the provider gave no limit; a nil Expire means no expiry.
+type SubUsage struct {
+	Upload   int64      `json:"upload"`
+	Download int64      `json:"download"`
+	Total    int64      `json:"total"`
+	Expire   *time.Time `json:"expire,omitempty"`
 }
 
 // Inbound is one local listener (SOCKS5 or HTTP).
@@ -185,7 +200,19 @@ func (d AppData) Clone() AppData {
 	for k, v := range d.EngineChecks {
 		c.EngineChecks[k] = v
 	}
-	c.Subscriptions = append([]Subscription{}, d.Subscriptions...)
+	c.Subscriptions = make([]Subscription, len(d.Subscriptions))
+	for i, sub := range d.Subscriptions {
+		if sub.Usage != nil {
+			u := *sub.Usage
+			if u.Expire != nil {
+				e := *u.Expire
+				u.Expire = &e
+			}
+			sub.Usage = &u
+		}
+		sub.Warnings = append([]string(nil), sub.Warnings...)
+		c.Subscriptions[i] = sub
+	}
 	c.Settings = d.Settings.Clone()
 	return c
 }

@@ -56,7 +56,7 @@ func (s *Service) Run(ctx context.Context) {
 
 		if d.Settings.SubUpdateHours > 0 {
 			for _, sub := range d.Subscriptions {
-				if time.Since(sub.UpdatedAt) < time.Duration(d.Settings.SubUpdateHours)*time.Hour ||
+				if !subscriptionDue(d.Settings.SubUpdateHours, sub.UpdateHours, sub.UpdatedAt) ||
 					time.Since(lastTry[sub.ID]) < retrySubAfter {
 					continue
 				}

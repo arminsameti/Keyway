@@ -102,7 +102,7 @@ type Service struct {
 	verCache map[string]string
 	tagCache map[string]map[string]bool
 
-	fetch func(ctx context.Context, url string) (string, error) // replaceable in tests
+	fetch func(ctx context.Context, url string) (subResponse, error) // replaceable in tests
 }
 
 // New builds the service and migrates old data if needed.

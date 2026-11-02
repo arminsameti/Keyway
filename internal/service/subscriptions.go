@@ -114,7 +114,8 @@ func (s *Service) AddSubscription(ctx context.Context, name, rawURL string) (mod
 			return sub, added, errs, err
 		}
 	}
-	if strings.TrimSpace(name) == "" {
+	named := strings.TrimSpace(name) != ""
+	if !named {
 		name = u.Host
 	}
 	sub := models.Subscription{ID: newID(), Name: strings.TrimSpace(name), URL: rawURL}
@@ -130,6 +131,18 @@ func (s *Service) AddSubscription(ctx context.Context, name, rawURL string) (mod
 		return sub, 0, errs, err
 	}
 	sub, _ = s.findSub(sub.ID)
+	if !named && sub.Title != "" {
+		// the user gave no name: the provider's own title beats the host name
+		sub.Name = sub.Title
+		_, _ = s.store.Update(func(d *models.AppData) error {
+			for i := range d.Subscriptions {
+				if d.Subscriptions[i].ID == sub.ID {
+					d.Subscriptions[i].Name = sub.Title
+				}
+			}
+			return nil
+		})
+	}
 	return sub, added, errs, nil
 }
 
@@ -152,7 +165,9 @@ func (s *Service) RefreshSubscription(ctx context.Context, id string) (added, re
 		return 0, 0, nil, ErrNodeNotFound
 	}
 
-	var format string
+	var format, title string
+	var updateHours int
+	var usage *models.SubUsage
 	record := func(msg string, n int) {
 		_, _ = s.store.Update(func(d *models.AppData) error {
 			for i := range d.Subscriptions {
@@ -162,6 +177,8 @@ func (s *Service) RefreshSubscription(ctx context.Context, id string) (added, re
 						d.Subscriptions[i].UpdatedAt = time.Now().UTC()
 						d.Subscriptions[i].NodeCount = n
 						d.Subscriptions[i].Format = format
+						// what the provider reports now replaces what it reported before
+						d.Subscriptions[i].Title, d.Subscriptions[i].UpdateHours, d.Subscriptions[i].Usage = title, updateHours, usage
 					}
 				}
 			}
@@ -169,10 +186,16 @@ func (s *Service) RefreshSubscription(ctx context.Context, id string) (added, re
 		})
 	}
 
-	body, err := s.fetch(ctx, sub.URL)
+	resp, err := s.fetch(ctx, sub.URL)
 	if err != nil {
 		record(err.Error(), 0)
 		return 0, 0, nil, err
+	}
+	body := resp.Body
+	title = parseProfileTitle(resp.Header.Get("Profile-Title"))
+	updateHours = parseUpdateInterval(resp.Header.Get("Profile-Update-Interval"))
+	if u, ok := parseUserinfo(resp.Header.Get("Subscription-Userinfo")); ok {
+		usage = &u
 	}
 	format = link.DetectFormat(body)
 	var nodes []models.Node
