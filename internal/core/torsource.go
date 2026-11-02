@@ -41,7 +41,7 @@ var TorSource = Source{
 func torSign(dir string) error {
 	for _, f := range []string{"libevent-2.1.7.dylib", "tor", "lyrebird"} {
 		if out, err := exec.Command("codesign", "--force", "--sign", "-", filepath.Join(dir, f)).CombinedOutput(); err != nil {
-			return fmt.Errorf("sign %s: %v: %s", f, err, strings.TrimSpace(string(out)))
+			return fmt.Errorf("sign %s: %w: %s", f, err, strings.TrimSpace(string(out)))
 		}
 	}
 	return nil

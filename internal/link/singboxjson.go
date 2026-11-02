@@ -30,7 +30,7 @@ func ParseSingBox(text string) ([]Item, error) {
 	dec := json.NewDecoder(bytes.NewReader([]byte(text)))
 	dec.UseNumber()
 	if err := dec.Decode(&doc); err != nil {
-		return nil, fmt.Errorf("invalid sing-box JSON: %v", err)
+		return nil, fmt.Errorf("invalid sing-box JSON: %w", err)
 	}
 	byTag := map[string]cfg{}
 	for _, m := range doc.Outbounds {
