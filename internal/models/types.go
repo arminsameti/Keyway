@@ -81,7 +81,7 @@ type Settings struct {
 	AutoSystemProxy bool      `json:"autoSystemProxy"` // set macOS system proxy on connect, clear on disconnect
 	SubUpdateHours  int       `json:"subUpdateHours"`  // 0 disables subscription auto-update
 
-	EnginePreference    string `json:"enginePreference"`    // xray | sing-box: used when both can run a server
+	EnginePreference    string `json:"enginePreference"`    // xray | sing-box | v2ray: used when several can run a server
 	AutoDownloadEngines bool   `json:"autoDownloadEngines"` // fetch an engine when a new server needs it
 	EngineUpdateCheck   string `json:"engineUpdateCheck"`   // never | daily | weekly
 	LatencyMethod       string `json:"latencyMethod"`       // tcp | real

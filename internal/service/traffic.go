@@ -148,6 +148,15 @@ func trafficSourceFor(e engine.Engine, in engine.Install, api *profile.StatsAPI)
 			return parseXrayStats(out)
 		}
 	}
+	if e.Name() == engine.NameV2Ray {
+		return func(ctx context.Context) (int64, int64, error) {
+			out, err := exec.CommandContext(ctx, in.Bin, "api", "stats", "-json", "--server="+addr).Output()
+			if err != nil {
+				return 0, 0, err
+			}
+			return parseXrayStats(out)
+		}
+	}
 	client := &http.Client{}
 	return func(ctx context.Context) (int64, int64, error) {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+"/connections", nil)

@@ -411,7 +411,7 @@ func (s *Service) PlanChain(ids []string) (ChainPlan, error) {
 	if err != nil {
 		return ChainPlan{}, err
 	}
-	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true }, "")
+	steps, err := planShown(hops, d.Settings.EnginePreference, s.engineList(), s.installed, "")
 	if err != nil {
 		return ChainPlan{}, &models.ValidationError{Msg: err.Error()}
 	}
@@ -448,7 +448,7 @@ func (s *Service) PreviewConfig(id string) (ConfigPreview, error) {
 			return ConfigPreview{}, &models.ValidationError{Msg: err.Error()}
 		}
 	}
-	steps, err := engine.PlanSegments(hops, d.Settings.EnginePreference, s.engineList(), func(string) bool { return true }, s.finalFor(d))
+	steps, err := planShown(hops, d.Settings.EnginePreference, s.engineList(), s.installed, s.finalFor(d))
 	if err != nil {
 		return ConfigPreview{}, &models.ValidationError{Msg: err.Error()}
 	}

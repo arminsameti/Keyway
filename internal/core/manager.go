@@ -98,6 +98,17 @@ var SingBoxSource = Source{
 	Assets: singBoxAssets,
 }
 
+// V2RaySource is the official v2ray-core release channel.
+var V2RaySource = Source{
+	Name: "V2Ray core", Repo: "v2fly/v2ray-core", Binary: "v2ray", Archive: ArchiveZip, Checksum: ChecksumDgst,
+	Files: map[string]Member{
+		"v2ray":       {0o755, maxBinarySize},
+		"geoip.dat":   {0o644, maxDataSize},
+		"geosite.dat": {0o644, maxDataSize},
+	},
+	Assets: v2rayAssets,
+}
+
 // Release is a published Xray-core release.
 type Release struct {
 	Tag       string    `json:"tag_name"`
@@ -328,6 +339,21 @@ func xrayAssets(string) ([]string, error) {
 		return []string{"Xray-linux-64.zip"}, nil
 	case "linux/arm64":
 		return []string{"Xray-linux-arm64-v8a.zip"}, nil
+	}
+	return nil, fmt.Errorf("unsupported platform %s/%s", runtime.GOOS, runtime.GOARCH)
+}
+
+// v2rayAssets lists v2ray-core release asset names for this platform.
+func v2rayAssets(string) ([]string, error) {
+	switch runtime.GOOS + "/" + runtime.GOARCH {
+	case "darwin/arm64":
+		return []string{"v2ray-macos-arm64-v8a.zip"}, nil
+	case "darwin/amd64":
+		return []string{"v2ray-macos-64.zip"}, nil
+	case "linux/amd64":
+		return []string{"v2ray-linux-64.zip"}, nil
+	case "linux/arm64":
+		return []string{"v2ray-linux-arm64-v8a.zip"}, nil
 	}
 	return nil, fmt.Errorf("unsupported platform %s/%s", runtime.GOOS, runtime.GOARCH)
 }

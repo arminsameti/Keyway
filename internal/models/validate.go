@@ -21,7 +21,7 @@ var tagRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,32}$`)
 
 var (
 	routingModes = map[string]bool{"global": true, "bypass-private": true, "custom": true, "rules": true}
-	enginePrefs  = map[string]bool{"xray": true, "sing-box": true}
+	enginePrefs  = map[string]bool{"xray": true, "sing-box": true, "v2ray": true}
 	updateChecks = map[string]bool{"never": true, "daily": true, "weekly": true}
 	latencyModes = map[string]bool{"tcp": true, "real": true}
 	logLevels    = map[string]bool{"debug": true, "info": true, "warning": true, "error": true, "none": true}
