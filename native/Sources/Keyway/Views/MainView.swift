@@ -26,6 +26,7 @@ struct MainView: View {
                     switch model.sidebar {
                     case .servers: ServersView()
                     case .subscriptions: SubscriptionsView()
+                    case .groups: GroupsView()
                     case .routing: ScrollView { RoutingForm().padding(24) }.navigationTitle("Routing")
                     case .activity: ActivityView()
                     case .engines: ScrollView { EnginesPane().padding(24) }.navigationTitle("Engines")
@@ -65,6 +66,7 @@ struct Sidebar: View {
             Section("Proxy") {
                 row(.servers, "Servers", "globe", count: model.nodes.count)
                 row(.subscriptions, "Subscriptions", "dot.radiowaves.up.forward", count: model.subscriptions.count)
+                row(.groups, "Groups", "square.stack.3d.up", count: model.groups.count)
                 row(.routing, "Routing", "arrow.triangle.branch", count: nil)
                 row(.activity, "Activity", "waveform.path.ecg", count: nil)
             }
@@ -187,7 +189,7 @@ struct ConnectionCard: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(connected ? "Connected" : "Not Connected").font(.system(size: 17, weight: .bold))
                     if connected {
-                        Text(verbatim: "\(model.status.activeNode) · \(Format.latency(model.status.activeLatencyMs))")
+                        Text(verbatim: "\(model.status.activeGroup.map { "\($0) → " } ?? "")\(model.status.activeNode) · \(Format.latency(model.status.activeLatencyMs))")
                             .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.greenText)
                     }
                 }

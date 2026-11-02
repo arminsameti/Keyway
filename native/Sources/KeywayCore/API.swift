@@ -145,6 +145,19 @@ public final class APIClient: @unchecked Sendable {
     public func refreshAllSubscriptions() async throws { _ = try await raw("POST", "/api/subscriptions/refresh", body: [String: String](), timeout: 180) }
     public func deleteSubscription(_ id: String) async throws { _ = try await raw("DELETE", "/api/subscriptions/\(id)") }
 
+    // groups
+    public func createGroup(_ g: GroupInput) async throws { _ = try await raw("POST", "/api/groups", body: g) }
+    public func updateGroup(_ id: String, _ g: GroupInput) async throws { _ = try await raw("PUT", "/api/groups/\(id)", body: g) }
+    public func deleteGroup(_ id: String) async throws { _ = try await raw("DELETE", "/api/groups/\(id)") }
+    public func setActiveGroup(_ id: String) async throws { _ = try await raw("POST", "/api/active/group", body: ["id": id]) }
+    public func selectGroupMember(_ id: String, node: String) async throws {
+        _ = try await raw("POST", "/api/groups/\(id)/select", body: ["nodeId": node])
+    }
+    /// Tests the members and lets the group's strategy choose; moves a running connection if the group is active.
+    public func testGroup(_ id: String, mode: String) async throws {
+        _ = try await raw("POST", "/api/groups/\(id)/test", body: TestGroupBody(mode: mode, reconnect: true), timeout: 130)
+    }
+
     public func saveSettings(_ s: AppSettings) async throws { _ = try await raw("POST", "/api/settings", body: s) }
     public func setSystemProxy(_ on: Bool) async throws { _ = try await raw("POST", "/api/sysproxy", body: ["on": on]) }
     public func appUpdate() async throws -> AppUpdate { try await get("/api/app-update", as: AppUpdateBody.self).update }
@@ -163,6 +176,18 @@ public final class APIClient: @unchecked Sendable {
 // MARK: request/response bodies
 
 struct ErrorBody: Decodable { let error: String }
+struct TestGroupBody: Encodable { let mode: String; let reconnect: Bool }
+
+/// Creates or replaces a group. With subscriptionId set it holds every server of that subscription.
+public struct GroupInput: Encodable, Sendable {
+    public var name: String
+    public var strategy: String
+    public var members: [String]?
+    public var subscriptionId: String?
+    public init(name: String, strategy: String, members: [String]? = nil, subscriptionId: String? = nil) {
+        self.name = name; self.strategy = strategy; self.members = members; self.subscriptionId = subscriptionId
+    }
+}
 struct EnginesBody: Decodable { let engines: [EngineInfo] }
 struct AppUpdateBody: Decodable { let update: AppUpdate }
 struct JobsBody: Decodable { let jobs: [Job] }

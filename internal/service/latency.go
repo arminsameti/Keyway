@@ -261,6 +261,9 @@ func (s *Service) PickFastest(ctx context.Context, reconnect bool, mode string) 
 // AutoPickOnce is one iteration of the auto-pick loop.
 func (s *Service) AutoPickOnce(ctx context.Context) (switched bool, err error) {
 	d := s.store.Get()
+	if d.ActiveGroupID != "" {
+		return false, nil // the active group has its own strategy; see EvaluateGroup
+	}
 	cand := withoutTor(d, d.Nodes)
 	if len(cand) == 0 {
 		return false, nil

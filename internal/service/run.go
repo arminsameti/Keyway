@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
+
+	"keyway/internal/models"
 )
 
 const (
@@ -18,7 +21,7 @@ func (s *Service) Run(ctx context.Context) {
 
 	ticker := time.NewTicker(loopInterval)
 	defer ticker.Stop()
-	var lastPick time.Time
+	var lastPick, lastGroup time.Time
 	lastTry := map[string]time.Time{}   // only touched by this goroutine
 	lastCheck := map[string]time.Time{} // engine update checks, same
 
@@ -35,6 +38,14 @@ func (s *Service) Run(ctx context.Context) {
 			lastPick = time.Now()
 			if _, err := s.AutoPickOnce(ctx); err != nil && ctx.Err() == nil {
 				s.log.Warn("auto-pick failed", "err", err)
+			}
+		}
+
+		// the active fallback / url-test group re-tests its members on the same cadence
+		if g, ok := d.FindGroup(d.ActiveGroupID); ok && g.Strategy != models.StrategySelect && time.Since(lastGroup) >= interval {
+			lastGroup = time.Now()
+			if _, err := s.EvaluateGroup(ctx, g.ID, ModeAuto, true); err != nil && !errors.Is(err, ErrAllFailed) && ctx.Err() == nil {
+				s.log.Warn("group check failed", "group", g.Name, "err", err)
 			}
 		}
 
@@ -56,7 +67,7 @@ func (s *Service) Run(ctx context.Context) {
 
 		if d.Settings.SubUpdateHours > 0 {
 			for _, sub := range d.Subscriptions {
-				if time.Since(sub.UpdatedAt) < time.Duration(d.Settings.SubUpdateHours)*time.Hour ||
+				if !subscriptionDue(d.Settings.SubUpdateHours, sub.UpdateHours, sub.UpdatedAt) ||
 					time.Since(lastTry[sub.ID]) < retrySubAfter {
 					continue
 				}

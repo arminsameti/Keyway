@@ -8,6 +8,7 @@ public struct Status: Codable, Equatable, Sendable {
     public var lastExit: String?
     public var activeNode = ""
     public var activeNodeId = ""
+    public var activeGroup: String? // name of the group in use, if any
     public var activeCountryCode: String?
     public var activeLatencyMs: Int = -1
     public var `protocol`: String?
@@ -101,10 +102,56 @@ public struct Subscription: Codable, Identifiable, Hashable, Sendable {
     public var nodeCount: Int
     public var lastError: String?
     public var format: String?
-    public init(id: String, name: String, url: String, updatedAt: Date? = nil, nodeCount: Int = 0, lastError: String? = nil, format: String? = nil) {
+    // what the provider reports in response headers
+    public var title: String?
+    public var updateHours: Int?
+    public var usage: SubUsage?
+    public var warnings: [String]?
+    public init(id: String, name: String, url: String, updatedAt: Date? = nil, nodeCount: Int = 0, lastError: String? = nil, format: String? = nil,
+                title: String? = nil, updateHours: Int? = nil, usage: SubUsage? = nil, warnings: [String]? = nil) {
         self.id = id; self.name = name; self.url = url; self.updatedAt = updatedAt; self.nodeCount = nodeCount
         self.lastError = lastError; self.format = format
+        self.title = title; self.updateHours = updateHours; self.usage = usage; self.warnings = warnings
     }
+}
+
+/// The quota a provider reports (Subscription-Userinfo). total 0 means no limit given; no expire means none.
+public struct SubUsage: Codable, Hashable, Sendable {
+    public var upload: Int64
+    public var download: Int64
+    public var total: Int64
+    public var expire: Date?
+    public init(upload: Int64, download: Int64, total: Int64, expire: Date? = nil) {
+        self.upload = upload; self.download = download; self.total = total; self.expire = expire
+    }
+    public var used: Int64 { upload + download }
+}
+
+/// A set of servers that act as one: select (you pick), fallback (first one that works) or url-test (fastest).
+public struct ProxyGroup: Codable, Identifiable, Hashable, Sendable {
+    public var id: String
+    public var name: String
+    public var strategy: String
+    public var members: [String]
+    public var current: String?
+    public var source: String?
+    public var follow: Bool?
+    public var memberCount: Int
+    public var currentName: String?
+    public var currentCountryCode: String?
+    public var currentLatencyMs: Int
+    public var sourceName: String?
+    public init(id: String, name: String, strategy: String, members: [String], current: String? = nil, source: String? = nil, follow: Bool? = nil,
+                currentName: String? = nil, currentCountryCode: String? = nil, currentLatencyMs: Int = -1, sourceName: String? = nil) {
+        self.id = id; self.name = name; self.strategy = strategy; self.members = members; self.current = current
+        self.source = source; self.follow = follow; self.memberCount = members.count; self.currentName = currentName
+        self.currentCountryCode = currentCountryCode; self.currentLatencyMs = currentLatencyMs; self.sourceName = sourceName
+    }
+    /// Imported from a subscription's own group definitions: refreshed with it, not editable here.
+    public var imported: Bool { !(source ?? "").isEmpty && follow != true }
+    /// Follows every server of a subscription.
+    public var followsSubscription: Bool { follow == true }
+    public var isAutomatic: Bool { strategy != "select" }
 }
 
 public struct Inbound: Codable, Hashable, Sendable {
@@ -261,6 +308,8 @@ public struct ImportPreview: Codable, Equatable, Sendable {
 public struct AppSnapshot: Codable, Sendable {
     public var nodes: [Node]
     public var activeNodeId: String
+    public var groups: [ProxyGroup]? // absent when talking to an older backend
+    public var activeGroupId: String?
     public var settings: AppSettings
     public var engines: [EngineInfo]
     public var subscriptions: [Subscription]
