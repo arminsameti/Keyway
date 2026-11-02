@@ -236,6 +236,9 @@ func (c *Checker) Download(ctx context.Context, r Release, dir string, progress 
 	if got := hex.EncodeToString(h.Sum(nil)); got != want {
 		return "", fmt.Errorf("checksum mismatch for %s: the download does not match SHA256SUMS.txt and was deleted", r.DiskImage())
 	}
+	if err := os.Chmod(f.Name(), 0o644); err != nil { // CreateTemp makes it owner-only
+		return "", err
+	}
 	dst := filepath.Join(dir, r.DiskImage())
 	if err := os.Rename(f.Name(), dst); err != nil {
 		return "", err

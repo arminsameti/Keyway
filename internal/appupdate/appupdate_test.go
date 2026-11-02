@@ -117,6 +117,9 @@ func TestDownloadVerifiesAgainstSHA256SUMS(t *testing.T) {
 	if b, _ := os.ReadFile(path); string(b) != "pretend disk image" {
 		t.Fatalf("content %q", b)
 	}
+	if st, _ := os.Stat(path); st.Mode().Perm() != 0o644 {
+		t.Fatalf("a download the user opens should be an ordinary file, got mode %v", st.Mode().Perm())
+	}
 	if last != int64(len("pretend disk image")) {
 		t.Fatalf("progress ended at %d", last)
 	}
