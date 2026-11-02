@@ -576,6 +576,13 @@ public struct ConfigPreview: Codable, Equatable, Identifiable, Sendable {
     public var id: String { engines.joined(separator: "+") + String(configs.joined().hashValue) }
     public var title = ""
     enum CodingKeys: String, CodingKey { case engines, configs, dns }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        engines = try c.decode([String].self, forKey: .engines)
+        configs = try c.decode([String].self, forKey: .configs)
+        dns = try c.decodeIfPresent([String].self, forKey: .dns) ?? []
+    }
 }
 
 /// Capture all traffic with a virtual interface (needs administrator rights).
