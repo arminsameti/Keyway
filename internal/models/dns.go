@@ -276,7 +276,12 @@ func (s Settings) EffectiveDNS(engine string) string {
 		if engine == "v2ray" {
 			route = "following the routing rules" // v2ray-core cannot pin its DNS queries to the proxy
 		}
-		parts = append(parts, label+names(p.Servers), route)
+		servers := p.Servers
+		if engine == "sing-box" && len(servers) > 1 {
+			servers = servers[:1] // sing-box has no failover between DNS servers
+			route += fmt.Sprintf(" · only the first of %d servers is used (sing-box has no DNS failover)", len(p.Servers))
+		}
+		parts = append(parts, label+names(servers), route)
 		if p.Direct != nil {
 			parts = append(parts, "bypassed domains: "+p.Direct.String()+" (direct)")
 		}

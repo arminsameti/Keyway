@@ -34,15 +34,32 @@ type Log struct {
 
 type DNS struct {
 	Servers []DNSServer `json:"servers"`
+	Rules   []DNSRule   `json:"rules,omitempty"`
 	Final   string      `json:"final,omitempty"`
 }
 
 type DNSServer struct {
-	Type       string `json:"type"` // udp tcp tls https local
+	Type       string `json:"type"` // udp tls https local fakeip
 	Tag        string `json:"tag"`
 	Server     string `json:"server,omitempty"`
 	ServerPort int    `json:"server_port,omitempty"`
 	Path       string `json:"path,omitempty"`
+	Detour     string `json:"detour,omitempty"` // the outbound that carries the queries; empty = directly
+
+	Inet4Range string `json:"inet4_range,omitempty"` // fakeip
+	Inet6Range string `json:"inet6_range,omitempty"`
+}
+
+// DNSRule picks the server that answers a query.
+type DNSRule struct {
+	QueryType     []string `json:"query_type,omitempty"`
+	RuleSet       []string `json:"rule_set,omitempty"`
+	Domain        []string `json:"domain,omitempty"`
+	DomainSuffix  []string `json:"domain_suffix,omitempty"`
+	DomainKeyword []string `json:"domain_keyword,omitempty"`
+	DomainRegex   []string `json:"domain_regex,omitempty"`
+	Action        string   `json:"action"`
+	Server        string   `json:"server"`
 }
 
 type User struct {

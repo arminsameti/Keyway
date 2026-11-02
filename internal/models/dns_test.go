@@ -207,7 +207,15 @@ func TestEffectiveDNS(t *testing.T) {
 	if got := s.EffectiveDNS("v2ray"); !strings.Contains(got, "routing rules") || strings.Contains(got, "through the proxy") {
 		t.Errorf("v2ray cannot pin the proxy: %q", got)
 	}
-	s.DNSMode, s.DNSDirect, s.DNS = "custom", "", []string{"tls://9.9.9.9"}
+	s.DNSMode, s.DNSDirect, s.DNS = "custom", "", []string{"tls://9.9.9.9", "8.8.8.8"}
+	got = s.EffectiveDNS("sing-box")
+	if !strings.Contains(got, "tls://9.9.9.9") || !strings.Contains(got, "only the first") || strings.Contains(got, "8.8.8.8,") {
+		t.Errorf("sing-box has no failover; it must say which server it uses: %q", got)
+	}
+	if got := s.EffectiveDNS("xray"); strings.Contains(got, "only the first") {
+		t.Errorf("Xray asks them all: %q", got)
+	}
+	s.DNS = []string{"tls://9.9.9.9"}
 	s.TUN.Enabled, s.FakeIP = true, true
 	if got := s.EffectiveDNS("sing-box"); !strings.Contains(got, "tls://9.9.9.9") || !strings.Contains(got, "FakeIP") {
 		t.Error(got)
