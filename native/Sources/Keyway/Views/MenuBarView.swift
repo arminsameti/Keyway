@@ -17,8 +17,21 @@ struct MenuBarView: View {
                 Text("Choose Fastest Automatically")
             } action: { model.setAutoPick(!model.settings.autoPick) }
 
+            ForEach(model.groups.prefix(5)) { g in
+                MenuRow(checked: model.activeGroupId == g.id) {
+                    Image(systemName: "square.stack.3d.up").font(.system(size: 11)).foregroundStyle(Palette.secondary).frame(width: 18, alignment: .leading)
+                    Text(g.name).lineLimit(1)
+                    Spacer()
+                    Text(g.currentName ?? "").font(.system(size: 11)).foregroundStyle(Palette.secondary).lineLimit(1)
+                } action: {
+                    if model.settings.autoPick { model.setAutoPick(false) }
+                    model.connectGroup(g.id)
+                }
+                .accessibilityLabel("Group \(g.name), \(Format.strategyName(g.strategy))")
+            }
+
             ForEach(model.topServers) { n in
-                let on = !model.settings.autoPick && n.id == (model.connected ? model.status.activeNodeId : model.activeNodeId)
+                let on = !model.settings.autoPick && model.activeGroupId.isEmpty && n.id == (model.connected ? model.status.activeNodeId : model.activeNodeId)
                 MenuRow(checked: on) {
                     Text(n.countryCode ?? "").font(.system(size: 10, weight: .bold)).foregroundStyle(Palette.secondary).frame(width: 18, alignment: .leading)
                     Text(n.displayName).lineLimit(1)
@@ -112,7 +125,8 @@ struct MenuBarView: View {
         var up = model.status.uptimeSec
         if let s = model.status.startedAt, s > .distantPast { up = Int(now.timeIntervalSince(s)) }
         let speed = model.traffic.available ? " · ↓ \(Format.rate(model.traffic.downBps))" : ""
-        return "\(model.status.activeNode) · \(Format.latency(model.status.activeLatencyMs)) · \(Format.uptime(up))\(speed)"
+        let group = model.status.activeGroup.map { "\($0) → " } ?? ""
+        return "\(group)\(model.status.activeNode) · \(Format.latency(model.status.activeLatencyMs)) · \(Format.uptime(up))\(speed)"
     }
 
     private var ports: String {

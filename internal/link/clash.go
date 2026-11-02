@@ -32,7 +32,7 @@ func ParseClash(text string) ([]Item, error) {
 	for i, m := range doc.Proxies {
 		c := cfg(m)
 		name, typ := strings.TrimSpace(c.str("name")), strings.ToLower(c.str("type"))
-		it := Item{Line: i + 1, Scheme: typ, Label: labelOf(name, typ)}
+		it := Item{Line: i + 1, Scheme: typ, Label: labelOf(name, typ), Name: name}
 		p, err := clashProfile(c, typ)
 		if err == nil {
 			it.Result, err = ProfileNode(p, name)

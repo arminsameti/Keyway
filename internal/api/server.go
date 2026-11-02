@@ -71,6 +71,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/routing/import", s.routingImport)
 	mux.HandleFunc("POST /api/routing/test", s.routingTest)
 	mux.HandleFunc("POST /api/active", s.setActive)
+	mux.HandleFunc("POST /api/active/group", s.setActiveGroup)
+
+	mux.HandleFunc("GET /api/groups", s.listGroups)
+	mux.HandleFunc("POST /api/groups", s.createGroup)
+	mux.HandleFunc("PUT /api/groups/{id}", s.updateGroup)
+	mux.HandleFunc("DELETE /api/groups/{id}", s.deleteGroup)
+	mux.HandleFunc("POST /api/groups/{id}/select", s.selectGroupMember)
+	mux.HandleFunc("POST /api/groups/{id}/test", s.testGroup)
 	mux.HandleFunc("POST /api/import", s.importLinks)
 	mux.HandleFunc("GET /api/qr", s.qr)
 
@@ -159,7 +167,7 @@ func statusFor(err error, fallback int) int {
 		return http.StatusBadRequest
 	case errors.As(err, &mbe):
 		return http.StatusRequestEntityTooLarge
-	case errors.Is(err, service.ErrNodeNotFound):
+	case errors.Is(err, service.ErrNodeNotFound), errors.Is(err, service.ErrGroupNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, service.ErrNoActiveNode), errors.Is(err, service.ErrNoNodes),
 		errors.Is(err, service.ErrBusy), errors.Is(err, core.ErrNotInstalled):

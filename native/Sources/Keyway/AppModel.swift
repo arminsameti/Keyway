@@ -6,7 +6,7 @@ import SwiftUI
 import KeywayCore
 
 enum SidebarItem: Hashable {
-    case servers, subscriptions, routing, activity, engines
+    case servers, subscriptions, groups, routing, activity, engines
 }
 
 /// A server group in the table: one subscription or "Added Manually".
@@ -31,6 +31,8 @@ final class AppModel {
     private(set) var traffic = Traffic()
     private(set) var nodes: [Node] = []
     private(set) var subscriptions: [Subscription] = []
+    private(set) var groups: [ProxyGroup] = []
+    private(set) var activeGroupId = ""
     private(set) var settings = AppSettings()
     private(set) var engines: [EngineInfo] = []
     private(set) var jobs: [Job] = []
@@ -160,6 +162,8 @@ final class AppModel {
         if let st = try? await client.state() {
             nodes = st.nodes
             subscriptions = st.subscriptions
+            groups = st.groups ?? []
+            activeGroupId = st.activeGroupId ?? ""
             settings = st.settings
             engines = st.engines
             activeNodeId = st.activeNodeId
@@ -198,6 +202,8 @@ final class AppModel {
     var connected: Bool { status.running }
     var activeNode: Node? { nodes.first { $0.id == (connected ? status.activeNodeId : activeNodeId) } }
     var selectedNode: Node? { nodes.first { $0.id == selectedNodeID } }
+    /// The group acting as the active server, if any.
+    var activeGroup: ProxyGroup? { groups.first { $0.id == activeGroupId } }
     var needsOnboarding: Bool { ready && (engines.allSatisfy { $0.installed.isEmpty } || nodes.isEmpty) }
     var socksPort: Int? { settings.port(of: "socks") }
     var httpPort: Int? { settings.port(of: "http") }
@@ -265,7 +271,42 @@ final class AppModel {
     func disconnect() { perform { try await $0.disconnect() } }
 
     func toggleConnection() {
-        if connected { disconnect() } else { connect(selectedNodeID ?? activeNodeId) }
+        if connected { disconnect() } else if let g = activeGroup, selectedNodeID == nil || selectedNodeID == activeNodeId {
+            connectGroup(g.id) // the group is the server; connecting its current member must not leave it
+        } else { connect(selectedNodeID ?? activeNodeId) }
+    }
+
+    // MARK: groups
+
+    func connectGroup(_ id: ProxyGroup.ID) {
+        connecting = true
+        perform { [weak self] c in
+            defer { Task { @MainActor in self?.connecting = false } }
+            try await c.setActiveGroup(id)
+            try await c.connect()
+        }
+    }
+
+    func createGroup(_ g: GroupInput) { perform { try await $0.createGroup(g) } }
+    func updateGroup(_ id: ProxyGroup.ID, _ g: GroupInput) { perform { try await $0.updateGroup(id, g) } }
+    func deleteGroup(_ id: ProxyGroup.ID) { perform { try await $0.deleteGroup(id) } }
+
+    /// Picks the server of a manual group; a running connection through that group moves along.
+    func selectMember(of group: ProxyGroup, _ nodeID: Node.ID) {
+        let moveConnection = connected && group.id == activeGroupId
+        perform { c in
+            try await c.selectGroupMember(group.id, node: nodeID)
+            if moveConnection { try await c.connect() }
+        }
+    }
+
+    func testGroup(_ id: ProxyGroup.ID) {
+        let m = settings.latencyMethod == "tcp" ? "tcp" : "real"
+        testing = true
+        perform { [weak self] c in
+            defer { Task { @MainActor in self?.testing = false } }
+            try await c.testGroup(id, mode: m)
+        }
     }
 
     func testLatency(_ mode: String? = nil) {
@@ -514,7 +555,23 @@ extension AppModel {
                         HopInfo(id: "wg1", name: "Home WireGuard", countryCode: "CA", protocolName: "WireGuard", transport: "UDP")]),
         ]
         subscriptions = [Subscription(id: "s1", name: "My Subscription", url: "https://sub.example.net/api/v1/client/token",
-                                      updatedAt: Date().addingTimeInterval(-7200), nodeCount: 7, format: "clash")]
+                                      updatedAt: Date().addingTimeInterval(-7200), nodeCount: 7, format: "clash",
+                                      title: "My Subscription", updateHours: 6,
+                                      usage: SubUsage(upload: 4_200_000_000, download: 61_800_000_000, total: 100_000_000_000,
+                                                      expire: Date().addingTimeInterval(12 * 86_400 + 3_600)),
+                                      warnings: ["Group “Spread” skipped: load-balance groups are not supported"])]
+        groups = [
+            ProxyGroup(id: "g1", name: "Proxy", strategy: "select", members: ["fra1", "ams2", "hel1"], current: "ams2", source: "s1",
+                       currentName: "Amsterdam 02", currentCountryCode: "NL", currentLatencyMs: 62, sourceName: "My Subscription"),
+            ProxyGroup(id: "g2", name: "Fastest in Europe", strategy: "url-test", members: ["fra1", "ams2", "hel1"], current: "fra1",
+                       currentName: "Frankfurt 01", currentCountryCode: "DE", currentLatencyMs: 48),
+            ProxyGroup(id: "g3", name: "Home first", strategy: "fallback", members: ["home", "wg1", "fra1"], current: "home",
+                       currentName: "Home server", currentCountryCode: "CA", currentLatencyMs: 24),
+            ProxyGroup(id: "g4", name: "My Subscription", strategy: "url-test", members: ["fra1", "ams2", "hel1", "ist1", "tyo3", "sgp1", "sgp2"],
+                       current: "fra1", source: "s1", follow: true, currentName: "Frankfurt 01", currentCountryCode: "DE",
+                       currentLatencyMs: 48, sourceName: "My Subscription"),
+        ]
+        activeGroupId = "g2"
         var s = AppSettings()
         s.inbounds = [Inbound(tag: "socks-in", protocol: "socks", port: 10808, listen: "127.0.0.1", udp: true, enabled: true),
                       Inbound(tag: "http-in", protocol: "http", port: 10809, listen: "127.0.0.1", udp: false, enabled: true)]

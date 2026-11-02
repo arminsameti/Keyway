@@ -68,11 +68,24 @@ struct SubscriptionsView: View {
                         Text([Format.plural(sub.nodeCount, "server"), Format.updated(sub.updatedAt), Format.formatName(sub.format)]
                             .compactMap { $0 }.joined(separator: " · "))
                             .font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                        if let u = sub.usage { SubscriptionUsage(usage: u, updateHours: sub.updateHours) }
                         if let err = sub.lastError, !err.isEmpty {
                             Label(err, systemImage: "exclamationmark.triangle").font(.system(size: 11)).foregroundStyle(Palette.warn)
                         }
+                        ForEach(sub.warnings ?? [], id: \.self) { w in
+                            Label(w, systemImage: "info.circle").font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                        }
                     }
                     Spacer()
+                    if !model.groups.contains(where: { $0.followsSubscription && $0.source == sub.id }) {
+                        Menu("Group") {
+                            Button("Fastest of these servers") { followGroup(sub, "url-test") }
+                            Button("First that works") { followGroup(sub, "fallback") }
+                            Button("Choose manually") { followGroup(sub, "select") }
+                        }
+                        .menuStyle(.button).fixedSize()
+                        .help("Make a group of this subscription's servers, so they can be used as one")
+                    }
                     Button("Refresh") { model.refreshSubscription(sub.id) }
                     Button(role: .destructive) { model.deleteSubscription(sub.id) } label: { Image(systemName: "trash") }
                         .help("Remove this subscription and its servers")
@@ -102,6 +115,37 @@ struct SubscriptionsView: View {
                     .accessibilityLabel("Add subscription")
             }
         }
+    }
+}
+
+extension SubscriptionsView {
+    fileprivate func followGroup(_ sub: Subscription, _ strategy: String) {
+        model.createGroup(GroupInput(name: sub.name, strategy: strategy, subscriptionId: sub.id))
+    }
+}
+
+/// Traffic used, quota bar and expiry, as reported by the provider.
+struct SubscriptionUsage: View {
+    let usage: SubUsage
+    let updateHours: Int?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let f = Format.usageFraction(usage) {
+                ProgressView(value: f).tint(f > 0.9 ? Palette.error : f > 0.75 ? Palette.warn : Palette.accent)
+                    .frame(maxWidth: 260)
+                    .accessibilityLabel("Traffic used").accessibilityValue("\(Int((f * 100).rounded())) percent")
+            }
+            Text([Format.usageLine(usage), expiry, updateHours.map { "Provider refreshes every \(Format.plural($0, "hour"))" }]
+                .compactMap { $0 }.joined(separator: " · "))
+                .font(.system(size: 11)).foregroundStyle(Palette.secondary)
+        }
+        .padding(.top, 2)
+    }
+
+    private var expiry: String? {
+        guard let text = Format.expiry(usage.expire), let d = usage.expire else { return nil }
+        return "\(text) (\(d.formatted(date: .abbreviated, time: .omitted)))"
     }
 }
 

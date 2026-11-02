@@ -35,6 +35,11 @@ enum Snapshots {
             let onboarding = AppModel(); onboarding.loadSampleOnboarding()
             render(MainView().environment(connected), "main-connected-\(suffix)", CGSize(width: 1240, height: 780), appearance, dir)
             render(MainView().environment(idle), "main-idle-\(suffix)", CGSize(width: 1240, height: 780), appearance, dir)
+            let subs = AppModel(); subs.loadSample(connected: true); subs.sidebar = .subscriptions
+            render(MainView().environment(subs), "main-subscriptions-\(suffix)", CGSize(width: 1240, height: 780), appearance, dir)
+            let grp = AppModel(); grp.loadSample(connected: true); grp.sidebar = .groups
+            render(MainView().environment(grp), "main-groups-\(suffix)", CGSize(width: 1240, height: 780), appearance, dir)
+            render(GroupEditor(target: .edit(grp.groups[2])).environment(grp), "group-editor-\(suffix)", CGSize(width: 520, height: 560), appearance, dir)
             render(MenuBarView().environment(connected), "menubar-\(suffix)", CGSize(width: 352, height: 600), appearance, dir)
             render(ImportSheet(initialText: links, samplePreview: sampleImport).environment(connected), "import-\(suffix)",
                    CGSize(width: 580, height: 660), appearance, dir)

@@ -88,6 +88,7 @@ func normalize(d models.AppData) models.AppData {
 		d.Settings.Inbounds = models.DefaultSettings().Inbounds
 	}
 	d.Settings.Normalize()
+	d.ReconcileGroups()
 	return d
 }
 

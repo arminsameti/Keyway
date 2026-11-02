@@ -73,6 +73,9 @@ func (s *Service) hopsOf(d models.AppData, ids []string) ([]profile.Profile, []s
 	names := make([]string, 0, len(ids))
 	for i, id := range ids {
 		h, ok := d.FindNode(id)
+		if g, isGroup := d.FindGroup(id); !ok && isGroup {
+			return nil, nil, &models.ValidationError{Msg: fmt.Sprintf("hop %d “%s” is a group; a chain can only contain single servers", i+1, g.Name)}
+		}
 		if !ok {
 			return nil, nil, &models.ValidationError{Msg: fmt.Sprintf("hop %d is no longer in your server list", i+1)}
 		}

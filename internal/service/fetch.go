@@ -49,14 +49,26 @@ func ValidateURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-// safeFetch downloads a subscription body. The dialer's Control hook runs after
+// subResponse is a downloaded subscription: the body and the provider's headers.
+type subResponse struct {
+	Body   string
+	Header http.Header
+}
+
+// safeFetch downloads a subscription. The dialer's Control hook runs after
 // DNS resolution on every connection (including redirects), so a hostname that
 // resolves to a loopback/private/link-local address is refused: this app's own
 // local API and the LAN are not reachable through the subscription feature.
-func safeFetch(ctx context.Context, raw string) (string, error) {
+func safeFetch(ctx context.Context, raw string) (subResponse, error) {
+	return fetchFrom(ctx, raw, blockedIP)
+}
+
+// fetchFrom is safeFetch with the address guard injected (tests reach httptest
+// servers on loopback).
+func fetchFrom(ctx context.Context, raw string, blocked func(net.IP) bool) (subResponse, error) {
 	u, err := ValidateURL(raw)
 	if err != nil {
-		return "", err
+		return subResponse{}, err
 	}
 	dialer := &net.Dialer{
 		Timeout: 10 * time.Second,
@@ -65,7 +77,7 @@ func safeFetch(ctx context.Context, raw string) (string, error) {
 			if err != nil {
 				return err
 			}
-			if ip := net.ParseIP(host); ip == nil || blockedIP(ip) {
+			if ip := net.ParseIP(host); ip == nil || blocked(ip) {
 				return fmt.Errorf("refusing to connect to non-public address %s", host)
 			}
 			return nil
@@ -83,23 +95,23 @@ func safeFetch(ctx context.Context, raw string) (string, error) {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return "", err
+		return subResponse{}, err
 	}
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("fetch subscription: %w", err)
+		return subResponse{}, fmt.Errorf("fetch subscription: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("subscription server answered %s", resp.Status)
+		return subResponse{}, fmt.Errorf("subscription server answered %s", resp.Status)
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxSubscriptionBody+1))
 	if err != nil {
-		return "", fmt.Errorf("read subscription: %w", err)
+		return subResponse{}, fmt.Errorf("read subscription: %w", err)
 	}
 	if len(b) > maxSubscriptionBody {
-		return "", errors.New("subscription is larger than 4 MiB")
+		return subResponse{}, errors.New("subscription is larger than 4 MiB")
 	}
-	return string(b), nil
+	return subResponse{Body: string(b), Header: resp.Header}, nil
 }
