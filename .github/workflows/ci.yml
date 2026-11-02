@@ -10,7 +10,8 @@ jobs:
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - uses: golangci/golangci-lint-action@v6
-        with: { version: v1.64.8 }
+        # built from source with the job's Go: the prebuilt binary cannot read the standard library of a newer Go
+        with: { version: v1.64.8, install-mode: goinstall }
       - run: make smoke
   # Builds the whole macOS app (Swift, universal Go backend, signing), so a
   # packaging problem shows up in the pull request and not at release time.

@@ -26,8 +26,15 @@ TOR_ID="$(add_node "E2E Tor" '{"protocol":"tor","tor":{"bridges":"none"}}')"
 connect_to "$TOR_ID"
 [ "$(running_label)" = "Tor + sing-box" ] || fail "expected Tor + sing-box, got '$(running_label)'"
 check_tor "plain Tor"
-CODE="$(curl -s -m 90 -o /dev/null -w '%{http_code}' --proxy "socks5h://127.0.0.1:$SOCKS_PORT" http://2gzyxa5ihm7nsggfxnu52rck2vv4rvmdlkiu3zzui5du4xyclen53wid.onion/ || true)"
-[ "$CODE" = 200 ] || fail "an .onion page did not load (HTTP $CODE): hostnames must reach Tor unresolved"
+# Hidden services are slow and a single site can be down: try two, a few times.
+CODE=000
+for attempt in 1 2 3; do
+  for site in 2gzyxa5ihm7nsggfxnu52rck2vv4rvmdlkiu3zzui5du4xyclen53wid.onion duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion; do
+    CODE="$(curl -s -m 60 -o /dev/null -w '%{http_code}' --proxy "socks5h://127.0.0.1:$SOCKS_PORT" "http://$site/" || true)"
+    case "$CODE" in 2??|3??) break 2 ;; esac
+  done
+done
+case "$CODE" in 2??|3??) ;; *) fail "no .onion page loaded (last HTTP $CODE): hostnames must reach Tor unresolved" ;; esac
 ok ".onion page loaded"
 disconnect
 
