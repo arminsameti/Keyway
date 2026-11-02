@@ -146,6 +146,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var engineUpdateCheck = "weekly"
     public var latencyMethod = "real"
     public var torEnabled = false
+    public var appUpdateCheck = "daily" // daily | never
     public var tun = TUNSettings()
     public var ruleSets: [RuleSet] = []
     public var activeRuleSet = ""
@@ -154,6 +155,34 @@ public struct AppSettings: Codable, Equatable, Sendable {
     /// The first enabled inbound of a protocol ("socks", "http").
     public func port(of proto: String) -> Int? {
         inbounds.first { $0.protocol == proto && $0.enabled }?.port
+    }
+}
+
+/// Keyway's own update state (internal/service/appupdate.go).
+public struct AppUpdate: Codable, Equatable, Sendable {
+    public var current = ""
+    public var latest: String?
+    public var available = false
+    public var enabled = true
+    public var checkedAt: Date?
+    public var error: String?
+    public var notesUrl: String?
+    public var download: AppDownload?
+    public init() {}
+}
+
+/// A disk image download; `path` is set once its checksum has been verified.
+public struct AppDownload: Codable, Equatable, Sendable {
+    public var version: String
+    public var state: String // running done failed
+    public var done: Int64
+    public var total: Int64
+    public var path: String?
+    public var error: String?
+    /// 0...1, or nil while the size is unknown.
+    public var fraction: Double? { total > 0 ? min(1, Double(done) / Double(total)) : nil }
+    public init(version: String, state: String, done: Int64 = 0, total: Int64 = -1, path: String? = nil, error: String? = nil) {
+        self.version = version; self.state = state; self.done = done; self.total = total; self.path = path; self.error = error
     }
 }
 

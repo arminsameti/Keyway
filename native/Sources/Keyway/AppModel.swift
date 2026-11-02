@@ -34,6 +34,8 @@ final class AppModel {
     private(set) var settings = AppSettings()
     private(set) var engines: [EngineInfo] = []
     private(set) var jobs: [Job] = []
+    private(set) var appUpdate = AppUpdate()
+    private var revealedUpdate: String?
     private(set) var activeNodeId = ""
     private(set) var sysProxyServices: [String] = []
 
@@ -81,7 +83,9 @@ final class AppModel {
             var tick = 0
             while !Task.isCancelled {
                 await self.refreshStatus()
-                if tick % 3 == 0 || self.jobs.contains(where: { $0.state == "running" }) { await self.refreshState() }
+                if tick % 3 == 0 || self.jobs.contains(where: { $0.state == "running" }) || self.appUpdate.download?.state == "running" {
+                    await self.refreshState()
+                }
                 tick += 1
                 try? await Task.sleep(for: .seconds(2))
             }
@@ -167,6 +171,16 @@ final class AppModel {
             }
         }
         if let js = try? await client.jobs() { jobs = js }
+        if let u = try? await client.appUpdate() { applyUpdate(u) }
+    }
+
+    private func applyUpdate(_ u: AppUpdate) {
+        appUpdate = u
+        // The disk image is only offered once its checksum matched: show it in Finder, once.
+        if let d = u.download, d.state == "done", let path = d.path, revealedUpdate != path {
+            revealedUpdate = path
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+        }
     }
 
     /// Runs an action, shows its error, then refreshes.
@@ -373,6 +387,24 @@ final class AppModel {
         jobs.filter { $0.engine == engine }.max { (Int($0.id) ?? 0) < (Int($1.id) ?? 0) }
     }
 
+    // MARK: app updates
+
+    func checkForUpdate() {
+        guard let client else { return }
+        Task {
+            do { applyUpdate(try await client.checkAppUpdate()) } catch { errorMessage = error.localizedDescription }
+            await refreshState()
+        }
+    }
+
+    func downloadUpdate() {
+        guard let client else { return }
+        revealedUpdate = nil
+        Task {
+            do { applyUpdate(try await client.downloadAppUpdate()) } catch { errorMessage = error.localizedDescription }
+        }
+    }
+
     func checkEngine(_ name: String) { perform { try await $0.checkEngine(name) } }
     func useEngine(_ name: String, version: String) { perform { try await $0.useEngine(name, version: version) } }
 
@@ -497,6 +529,10 @@ extension AppModel {
                        latest: "v1.12.0", updateAvailable: false, checkedAt: Date(), checkError: nil,
                        protocols: ["TUIC", "Hysteria", "AnyTLS", "ShadowTLS", "NaiveProxy", "SSH"]),
         ]
+        var up = AppUpdate()
+        up.current = "v0.2.1"; up.latest = "v0.2.2"; up.available = true; up.checkedAt = Date()
+        up.notesUrl = "https://github.com/arminsameti/Keyway/releases/tag/v0.2.2"
+        appUpdate = up
         activeNodeId = "fra1"
         selectedNodeID = "fra1"
         var st = Status()

@@ -58,6 +58,7 @@ struct GeneralPane: View {
                     }.labelsHidden().fixedSize()
                 }
             }
+            UpdateCard()
         }
         .frame(maxWidth: 680)
         .onAppear { atLogin = model.opensAtLogin }

@@ -86,6 +86,7 @@ type Settings struct {
 	EngineUpdateCheck   string `json:"engineUpdateCheck"`   // never | daily | weekly
 	LatencyMethod       string `json:"latencyMethod"`       // tcp | real
 	TorEnabled          bool   `json:"torEnabled"`          // Tor servers, chains and the Tor engine are available
+	AppUpdateCheck      string `json:"appUpdateCheck"`      // daily | never: ask GitHub whether a newer Keyway exists
 
 	TUN TUNSettings `json:"tun"`
 
@@ -108,6 +109,7 @@ type AppData struct {
 	ActiveCore    string                 `json:"activeCore,omitempty"`
 	Engines       map[string]string      `json:"engines"`      // engine name -> active version tag
 	EngineChecks  map[string]EngineCheck `json:"engineChecks"` // engine name -> last update check
+	AppCheck      EngineCheck            `json:"appCheck"`     // last check for a newer Keyway
 	Nodes         []Node                 `json:"nodes"`
 	Subscriptions []Subscription         `json:"subscriptions"`
 	Settings      Settings               `json:"settings"`
@@ -137,6 +139,7 @@ func DefaultSettings() Settings {
 		AutoDownloadEngines: true,
 		EngineUpdateCheck:   "weekly",
 		LatencyMethod:       "real",
+		AppUpdateCheck:      "daily",
 		TUN:                 TUNSettings{Privilege: "prompt", Stack: "mixed", MTU: 9000},
 	}
 }

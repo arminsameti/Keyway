@@ -147,6 +147,9 @@ public final class APIClient: @unchecked Sendable {
 
     public func saveSettings(_ s: AppSettings) async throws { _ = try await raw("POST", "/api/settings", body: s) }
     public func setSystemProxy(_ on: Bool) async throws { _ = try await raw("POST", "/api/sysproxy", body: ["on": on]) }
+    public func appUpdate() async throws -> AppUpdate { try await get("/api/app-update", as: AppUpdateBody.self).update }
+    public func checkAppUpdate() async throws -> AppUpdate { try await post("/api/app-update/check", as: AppUpdateBody.self, timeout: 60).update }
+    public func downloadAppUpdate() async throws -> AppUpdate { try await post("/api/app-update/download", as: AppUpdateBody.self).update }
     public func logs(since: Int) async throws -> LogsBody { try await get("/api/logs?since=\(since)") }
 
     public func startDownload(engine: String, version: String = "") async throws -> Job {
@@ -161,6 +164,7 @@ public final class APIClient: @unchecked Sendable {
 
 struct ErrorBody: Decodable { let error: String }
 struct EnginesBody: Decodable { let engines: [EngineInfo] }
+struct AppUpdateBody: Decodable { let update: AppUpdate }
 struct JobsBody: Decodable { let jobs: [Job] }
 struct JobBody: Decodable { let job: Job }
 struct LatencyBody: Decodable { let latency: [String: Int] }

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -51,6 +52,10 @@ type Config struct {
 	// AutoDownload lets the service fetch a missing engine when a server needs
 	// it (and settings.autoDownloadEngines agrees). Off in tests.
 	AutoDownload bool
+	// AppUpdater checks for newer Keyway releases and downloads them to
+	// DownloadsDir (default ~/Downloads). Nil turns the feature off.
+	AppUpdater   AppUpdater
+	DownloadsDir string
 }
 
 // Service is the application core.
@@ -75,6 +80,10 @@ type Service struct {
 	extraMu sync.Mutex
 	extra   []*engine.Runner
 	jobs    jobs // background engine downloads
+
+	app          AppUpdater // nil: no update checks
+	appDL        appDownloads
+	downloadsDir string
 
 	torFlag atomic.Bool // Settings.TorEnabled, readable while the store is locked
 
@@ -109,6 +118,12 @@ func New(c Config) (*Service, error) {
 		autoDL:   c.AutoDownload,
 		verCache: map[string]string{}, tagCache: map[string]map[string]bool{},
 		fetch: safeFetch,
+		app:   c.AppUpdater, downloadsDir: c.DownloadsDir,
+	}
+	if s.downloadsDir == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			s.downloadsDir = filepath.Join(home, "Downloads")
+		}
 	}
 	s.torFlag.Store(c.Store.Get().Settings.TorEnabled)
 	s.run.OnExit(s.onEngineExit)

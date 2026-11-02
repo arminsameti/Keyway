@@ -64,6 +64,14 @@ struct MenuBarView: View {
 
             Divider().padding(.horizontal, 10).padding(.bottom, 4)
 
+            if model.appUpdate.available, let v = model.appUpdate.latest {
+                SettingsLink {
+                    HStack { Text("Update Available"); Spacer(); Text(v).foregroundStyle(Palette.secondary).font(.system(size: 12)) }
+                        .padding(.horizontal, 12).frame(height: 28).contentShape(Rectangle())
+                }
+                .buttonStyle(MenuButtonStyle())
+                .simultaneousGesture(TapGesture().onEnded { Activation.bringForward() })
+            }
             command("Test Latency", "⌘T") { model.testLatency() }.keyboardShortcut("t")
             command("Add Servers from Clipboard", "⇧⌘V") { open(); model.addFromClipboard() }.keyboardShortcut("v", modifiers: [.command, .shift])
             command("Open Keyway…", "⌘O") { open() }.keyboardShortcut("o")
