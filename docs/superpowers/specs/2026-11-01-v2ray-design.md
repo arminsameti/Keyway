@@ -34,17 +34,12 @@ Tested on darwin/arm64 with local VMess servers.
 | `sockopt.dialerProxy` | **Passes `v2ray test`, then is silently ignored: the hop is skipped** |
 | Reality and `flow: xtls-rprx-vision` | Pass `v2ray test`; assumed ignored, not run live |
 | `network: httpupgrade`, `network: xhttp`, Shadowsocks 2022 ciphers | Rejected with an error |
+| Chained hop with TLS through `proxySettings`, against a TLS-only exit | Works, with or without `transportLayer`; Keyway sets it to `true`, as v2ray's documentation requires |
+| Password-protected SOCKS bridge between two processes | Works; a wrong password gets no traffic through |
+| `tlsSettings.fingerprint` set to `chrome` or `firefox` | **Passes `v2ray test`, then is silently ignored: the ClientHello is identical to one with no fingerprint** |
 
 `v2ray test` therefore cannot be the safety net for unknown fields. The allowlist and the output check in
 section 2 are.
-
-Not yet tested, and required by the first implementation task:
-
-- **`proxySettings.transportLayer`.** v2ray's documentation says `streamSettings` do not apply to an outbound
-  using `proxySettings` unless `transportLayer` is true. The probe used plain TCP, so it could not show this.
-  A chained hop with TLS must be proven to still use TLS.
-- **Password-protected SOCKS bridge.** Both the inbound and outbound side between processes.
-- **TLS `fingerprint`.** Whether the v4 format honours it, shown by inspecting a real ClientHello.
 
 ## 1. Allowlist (`internal/v2ray`)
 
@@ -64,11 +59,11 @@ Rejected, each with a reason naming the engine that can run it:
 - `Security.PinSHA256` and `Security.Insecure`
 - `Transport.Authority` on gRPC
 - `Overrides.Fragment`
-- `Security.Fingerprint` or `Overrides.Fingerprint` set, unless the first implementation task proves
-  fingerprints are honoured. If it does, this line is removed from the code and this spec.
+- `Security.Fingerprint` or `Overrides.Fingerprint` set
 
 Pinning stays off v2ray-core because Keyway writes `pinnedPeerCertSha256` as hex, while v2ray's field is
-`pinnedPeerCertificateChainSha256`. An ignored pin would look like protection and give none.
+`pinnedPeerCertificateChainSha256`. An ignored pin would look like protection and give none. Fingerprints stay off for the same reason, so servers
+imported with `fp=chrome` run on Xray even under the `v2ray` preference.
 
 `SupportsSegment` applies `Supports` to every hop, and allows chaining and upstream bridges only for hops that
 pass Xray's TCP-stream rule (`kcp` is excluded).
