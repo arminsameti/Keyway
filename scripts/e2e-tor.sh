@@ -14,11 +14,16 @@ for e in sing-box tor; do
 done
 SB="$(ls "$DIR"/engines/sing-box/v*/sing-box | head -1)"
 
+# Right after bootstrap Tor may still be building its first exit circuits, so
+# the first requests can fail fast: retry for a while.
 check_tor() { # check_tor LABEL
-  local r
-  r="$(curl -s -m 60 --proxy "socks5h://127.0.0.1:$SOCKS_PORT" https://check.torproject.org/api/ip || true)"
-  [ "$(echo "$r" | jget "d.get('IsTor')" 2>/dev/null || true)" = True ] || fail "$1: the exit is not Tor ($r)"
-  ok "$1: exit is Tor"
+  local r i
+  for i in $(seq 1 8); do
+    r="$(curl -s -m 30 --proxy "socks5h://127.0.0.1:$SOCKS_PORT" https://check.torproject.org/api/ip || true)"
+    if [ "$(echo "$r" | jget "d.get('IsTor')" 2>/dev/null || true)" = True ]; then ok "$1: exit is Tor"; return 0; fi
+    sleep 4
+  done
+  fail "$1: the exit is not Tor ($r)"
 }
 
 echo "== plain Tor"

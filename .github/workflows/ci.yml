@@ -5,12 +5,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Pinned, not `stable`: golangci-lint v1 cannot read the standard library
+      # of the newest Go. Raise it together with the linter.
       - uses: actions/setup-go@v5
-        with: { go-version: 'stable' }
+        with: { go-version: '1.26' }
       - run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - uses: golangci/golangci-lint-action@v6
-        # built from source with the job's Go: the prebuilt binary cannot read the standard library of a newer Go
+        # built from source with the job's Go
         with: { version: v1.64.8, install-mode: goinstall }
       - run: make smoke
   # Builds the whole macOS app (Swift, universal Go backend, signing), so a
