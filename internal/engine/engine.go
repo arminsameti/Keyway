@@ -19,6 +19,7 @@ const (
 	NameSingBox = "sing-box"
 	NameTor     = "tor"
 	NameV2Ray   = "v2ray"
+	NameMihomo  = "mihomo"
 
 	// TorDisplayName is the user-facing name of the Tor engine.
 	TorDisplayName = "Tor"
@@ -68,6 +69,26 @@ type RuleSetUser interface {
 	RuleSets(s models.Settings) []string
 }
 
+// GeoDataUser is implemented by engines whose configuration needs geodata files
+// that Keyway downloads, verified, before the engine can run (Mihomo).
+type GeoDataUser interface {
+	GeoData(s models.Settings) []string
+}
+
+// OptIn is implemented by engines that run a server only when the user chose
+// them as the preferred engine. The planner leaves them out of every other
+// plan, so adding one never changes what existing users run, whatever is
+// installed.
+type OptIn interface{ OptIn() bool }
+
+// eligible reports whether the planner may consider e under preference pref.
+func eligible(e Engine, pref string) bool {
+	if o, ok := e.(OptIn); ok && o.OptIn() {
+		return e.Name() == pref
+	}
+	return true
+}
+
 // Bootstrapper is implemented by engines whose process is not usable when its
 // port opens (Tor must finish building a circuit first). WaitReady blocks until
 // it is, reporting progress, and fails with the reason when it never is.
@@ -103,6 +124,9 @@ func Select(p profile.Profile, pref string, engines []Engine, installed func(nam
 	var capable []Engine
 	var reasons []string
 	for _, e := range engines {
+		if !eligible(e, pref) {
+			continue
+		}
 		if err := e.Supports(p); err != nil {
 			reasons = append(reasons, err.Error())
 			continue

@@ -62,8 +62,11 @@ func engineProtocols(e engine.Engine) []string {
 		if p == profile.Hysteria2 {
 			probe.Hysteria = nil
 		}
-		if p == profile.VLESS {
-			probe.Security.Kind = "tls" // cores differ on VLESS without TLS, not on VLESS itself
+		if p == profile.VLESS || p == profile.Trojan {
+			probe.Security.Kind = "tls" // cores differ on VLESS and Trojan without TLS, not on the protocols themselves
+		}
+		if p == profile.WireGuard {
+			probe.WireGuard = &profile.WireGuardOpts{PrivateKey: "k", PeerPublicKey: "p", LocalAddress: []string{"10.0.0.2/32"}}
 		}
 		if p == profile.Shadowsocks {
 			probe.Cipher = "aes-128-gcm" // v2ray-core accepts only the ciphers it can run
