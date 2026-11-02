@@ -370,6 +370,16 @@ func (s *Service) syncTags() {
 // prepare downloads the data files an engine needs for the current settings
 // (sing-box rule sets) before its config is written.
 func (s *Service) prepare(ctx context.Context, e engine.Engine, d models.AppData) error {
+	if gd, ok := e.(engine.GeoDataUser); ok {
+		// Mihomo would fetch a missing geodata file itself, unverified; its config
+		// forbids that, so the verified copy must be there before it starts.
+		if files := gd.GeoData(d.Settings); len(files) > 0 {
+			sl, _ := s.slot(e.Name())
+			if err := sl.Manager.EnsureGeoData(ctx, files); err != nil {
+				return fmt.Errorf("routing data for %s: %w", e.DisplayName(), err)
+			}
+		}
+	}
 	ru, ok := e.(engine.RuleSetUser)
 	if !ok {
 		return nil

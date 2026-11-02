@@ -590,6 +590,16 @@ func VersionOf(binaryPath string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+	if filepath.Base(binaryPath) == "mihomo" {
+		// Mihomo has no "version" command: it would take the word for nothing
+		// and start a proxy in its default directory. It answers -v.
+		out, err := exec.CommandContext(ctx, binaryPath, "-v").Output()
+		if err != nil {
+			return ""
+		}
+		first, _, _ := strings.Cut(string(out), "\n")
+		return strings.TrimSpace(first)
+	}
 	out, err := exec.CommandContext(ctx, binaryPath, "version").Output()
 	if err != nil { // Tor takes --version
 		if out, err = exec.CommandContext(ctx, binaryPath, "--version").Output(); err != nil {

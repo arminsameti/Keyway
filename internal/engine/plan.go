@@ -35,7 +35,13 @@ func PlanSegments(hops []profile.Profile, pref string, engines []Engine, install
 	if len(hops) == 0 {
 		return nil, fmt.Errorf("a chain needs at least one server")
 	}
-	order := preferredFirst(engines, pref)
+	var candidates []Engine
+	for _, e := range engines {
+		if eligible(e, pref) {
+			candidates = append(candidates, e)
+		}
+	}
+	order := preferredFirst(candidates, pref)
 	var steps []Step
 	for i := 0; i < len(hops); {
 		type cand struct {
