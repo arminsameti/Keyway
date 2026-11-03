@@ -13,18 +13,32 @@ Built in SwiftUI. No Electron, no web view, no config files.
 
 ![Platform](https://img.shields.io/badge/macOS-14%2B-black) ![Apple silicon and Intel](https://img.shields.io/badge/Apple%20silicon%20%2B%20Intel-universal-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
+<img src="docs/screenshots/servers-light.png#gh-light-mode-only" alt="Keyway server list on macOS, connected, with latency per server" width="860">
+<img src="docs/screenshots/servers-dark.png#gh-dark-mode-only" alt="Keyway server list on macOS in dark mode, connected, with latency per server" width="860">
+
 </div>
 
 Keyway is a free, open-source, native macOS app for people who use **Xray-core (VLESS, VMess, Trojan, Reality)** or **sing-box (Hysteria2, TUIC, WireGuard, OpenVPN)**, optionally **V2Ray core**, **Mihomo** or **Tor**, and want a Mac client that feels like a Mac app. It downloads and manages the engines for you, picks the right one for every server, and lets you build **multi-hop proxy chains** across protocols. If you are looking for a V2RayX, V2rayU or v2rayN alternative on macOS, this is it.
 
 ## Download and use
 
+**With Homebrew:**
+
+```bash
+brew install --cask arminsameti/tap/keyway
+```
+
+`brew upgrade --cask keyway` updates it, and Homebrew clears the quarantine flag for you, so the first launch just works.
+
+**Or by hand:**
+
 1. Download `Keyway-<version>-macOS.dmg` from the [latest release](https://github.com/arminsameti/Keyway/releases/latest) (a `.zip` of the same app is there too).
 2. Open the disk image and drag **Keyway** onto the **Applications** shortcut, then open it. It needs macOS 14 Sonoma or later, on Apple silicon or Intel (universal build, about 14 MB).
 3. The builds are not notarized yet, so macOS may refuse the first launch. Right-click the app, choose **Open**, then confirm. If that still fails, run `xattr -dr com.apple.quarantine /Applications/Keyway.app` once.
-4. Follow the three onboarding steps: download an engine, add servers, connect.
 
-Check the download against `SHA256SUMS.txt` on the release page. Keyway lives in the menu bar, so you can connect, switch server and toggle the system proxy without opening the window. When a newer release exists, Settings › General › Updates and the menu bar say so; **Download** saves the disk image to your Downloads folder, checks it against the release's `SHA256SUMS.txt` and shows it in Finder. Keyway never replaces itself, so you install it the same way as the first time.
+Then follow the three onboarding steps: download an engine, add servers, connect.
+
+Check a manual download against `SHA256SUMS.txt` on the release page. Keyway lives in the menu bar, so you can connect, switch server and toggle the system proxy without opening the window. When a newer release exists, Settings › General › Updates and the menu bar say so; **Download** saves the disk image to your Downloads folder, checks it against the release's `SHA256SUMS.txt` and shows it in Finder. Keyway never replaces itself, so you install it the same way as the first time.
 
 ## Features
 
@@ -38,11 +52,19 @@ Check the download against `SHA256SUMS.txt` on the release page. Keyway lives in
 
 Route traffic through several servers in a row, and mix protocols freely, for example **OpenVPN → VLESS Reality → WireGuard**. Each server only knows its neighbours.
 
+<p align="center">
+<img src="docs/screenshots/proxy-chain.png" alt="Keyway with a three-hop chain selected: OpenVPN, then VLESS Reality, then WireGuard" width="760">
+</p>
+
 - Chains can have any number of hops. One engine process runs the whole chain when it can; when hops need different engines, Keyway runs them as separate processes joined by a private loopback bridge and stops the chain if any part dies.
 - The editor tells you exactly which hop breaks a chain and why (for example a UDP hop needs the hop before it to carry UDP).
 - **Test Connection** checks every hop end to end before you save.
 
-### Every protocol, both engines
+### Every protocol, every engine
+
+<p align="center">
+<img src="docs/screenshots/engines.png" alt="Keyway Settings, Engines: Xray core and sing-box installed, with update status and the preferred engine" width="560">
+</p>
 
 | Engine | Protocols |
 |---|---|
@@ -93,6 +115,10 @@ Share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `tuic
 Everything stays on your Mac in `~/.keyway` (owner-only permissions). Keyway sends nothing anywhere except the engine downloads, the subscription URLs you add, and a once-a-day request to GitHub for the newest Keyway release number. That update check carries nothing that identifies you or your Mac, and you can turn it off in Settings › General › Updates. The local API only listens on `127.0.0.1` and is protected by a per-launch token. Keyway is open source under the MIT license, so you can read exactly what it does.
 
 ### DNS
+
+<p align="center">
+<img src="docs/screenshots/dns.png" alt="Keyway Settings, DNS: custom resolvers through the proxy and a direct resolver for bypassed domains" width="560">
+</p>
 
 By default nothing changes: Xray asks the servers it always did (`1.1.1.1, 8.8.8.8, localhost`) and sing-box asks the system resolver. Under **Settings › DNS** you can instead pick:
 
