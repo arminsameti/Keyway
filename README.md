@@ -13,9 +13,6 @@ Built in SwiftUI. No Electron, no web view, no config files.
 
 ![Platform](https://img.shields.io/badge/macOS-14%2B-black) ![Apple silicon and Intel](https://img.shields.io/badge/Apple%20silicon%20%2B%20Intel-universal-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-<img src="docs/screenshots/servers-light.png#gh-light-mode-only" alt="Keyway server list on macOS, connected, with latency per server" width="860">
-<img src="docs/screenshots/servers-dark.png#gh-dark-mode-only" alt="Keyway server list on macOS in dark mode, connected, with latency per server" width="860">
-
 </div>
 
 Keyway is a free, open-source, native macOS app for people who use **Xray-core (VLESS, VMess, Trojan, Reality)** or **sing-box (Hysteria2, TUIC, WireGuard, OpenVPN)**, optionally **V2Ray core**, **Mihomo** or **Tor**, and want a Mac client that feels like a Mac app. It downloads and manages the engines for you, picks the right one for every server, and lets you build **multi-hop proxy chains** across protocols. If you are looking for a V2RayX, V2rayU or v2rayN alternative on macOS, this is it.
@@ -36,10 +33,6 @@ Check the download against `SHA256SUMS.txt` on the release page. Keyway lives in
 - **A real Mac app:** SwiftUI interface, menu bar controls, light and dark mode, keyboard shortcuts, VoiceOver labels. It is not a web page in a wrapper.
 - **Light on resources:** a small Swift app plus a Go backend. The universal download is about 14 MB.
 - **Fast to use:** paste links from the clipboard, test latency of every server through its real engine, and let **auto-select fastest** pick the best one. It switches only when the current server is dead or clearly slower, so it never flaps between two similar servers.
-
-<p align="center">
-<img src="docs/screenshots/proxy-chain.png" alt="Keyway proxy chain editor: OpenVPN, then VLESS Reality, then WireGuard" width="640">
-</p>
 
 ### Proxy chaining
 
