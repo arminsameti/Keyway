@@ -25,7 +25,9 @@ Keyway is a free, open-source, native macOS app for people who use **Xray-core (
 **With Homebrew:**
 
 ```bash
-brew install --cask arminsameti/tap/keyway
+brew tap arminsameti/tap
+brew trust arminsameti/tap   # recent Homebrew versions ask you to trust third-party taps
+brew install --cask keyway
 ```
 
 `brew upgrade --cask keyway` updates it, and Homebrew clears the quarantine flag for you, so the first launch just works.
