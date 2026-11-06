@@ -1,0 +1,35 @@
+name: Bug report
+description: Something in Keyway does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got. Remove server addresses, keys and subscription URLs.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Keyway version
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and chip
+      placeholder: "macOS 15.1, Apple silicon"
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Protocol and engine of the server
+      placeholder: "VLESS Reality on Xray-core"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Optional. Check them for secrets first.
