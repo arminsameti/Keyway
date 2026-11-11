@@ -22,6 +22,7 @@ type PreviewItem struct {
 	EngineInstalled bool   `json:"engineInstalled"`
 	Duplicate       bool   `json:"duplicate"` // already in the server list
 	Reason          string `json:"reason,omitempty"`
+	NeedsCredential bool   `json:"needsCredential,omitempty"` // ready, but needs a username and password first
 }
 
 // Preview is the dry-run result of an import.
@@ -33,17 +34,20 @@ type Preview struct {
 }
 
 // PreviewImport parses pasted text without saving or fetching anything.
-func (s *Service) PreviewImport(text string) Preview {
+// Import-time credentials fill profiles that still need them, so the preview
+// shows what the import would store.
+func (s *Service) PreviewImport(text string, creds Credentials) Preview {
 	d := s.store.Get()
 	out := Preview{Items: []PreviewItem{}}
 	for _, it := range link.Classify(text) {
 		pi := PreviewItem{Line: it.Line, Status: it.Kind, Scheme: it.Scheme, Reason: it.Reason}
 		switch it.Kind {
 		case link.KindReady:
-			p := it.Result.Profile
+			p := fillCredentials(it.Result.Profile, creds)
 			pi.CountryCode, pi.Name = profile.SplitCountry(it.Result.Node.Name)
 			pi.Protocol, pi.Transport = profile.ProtocolName(p.Protocol), p.DisplayTransport()
 			_, pi.Duplicate = d.FindNode(it.Result.Node.ID)
+			pi.NeedsCredential = p.NeedsCredentials()
 			if e, err := runsOn(p, nil, d.Settings.EnginePreference, s.engineList(), s.installed); err == nil {
 				pi.Engine, pi.EngineName, pi.EngineInstalled = e.Name(), e.DisplayName(), s.installed(e.Name())
 			} else {

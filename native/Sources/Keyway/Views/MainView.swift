@@ -345,6 +345,10 @@ struct ServerTable: View {
                         Image(systemName: "exclamationmark.triangle").foregroundStyle(Palette.warn).help(why)
                             .accessibilityLabel("Cannot run: \(why)")
                     }
+                    if let w = n.warning, !w.isEmpty {
+                        Image(systemName: "person.badge.key").foregroundStyle(Palette.warn).help(w)
+                            .accessibilityLabel("Warning: \(w)")
+                    }
                 }
             }
             TableColumn("Protocol", value: \.protocolName) { Text($0.protocolName).foregroundStyle(Palette.tertiary) }
@@ -461,6 +465,10 @@ struct Inspector: View {
                 }
 
                 VStack(spacing: 8) {
+                    if let w = n.warning, !w.isEmpty {
+                        Label(w, systemImage: "person.badge.key").font(.system(size: 12)).foregroundStyle(Palette.warn)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     Button {
                         active ? model.disconnect() : model.connect(n.id)
                     } label: {
@@ -657,6 +665,9 @@ struct ChainRouteCard: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else if let why = node.engineReason, node.engine == nil {
                 Label(why, systemImage: "exclamationmark.triangle").font(.system(size: 11)).foregroundStyle(Palette.warn)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let w = node.warning, !w.isEmpty {
+                Label(w, systemImage: "person.badge.key").font(.system(size: 11)).foregroundStyle(Palette.warn)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }

@@ -10,13 +10,20 @@ import (
 
 func (s *Server) previewImport(w http.ResponseWriter, r *http.Request) {
 	var b struct {
-		Text string `json:"text"`
+		Text     string `json:"text"`
+		Username string `json:"username"`
+		Password string `json:"password"`
 	}
 	if err := decode(r, &b, false); err != nil {
 		failErr(w, err, http.StatusBadRequest)
 		return
 	}
-	p := s.svc.PreviewImport(b.Text)
+	creds, err := service.ValidateCredentials(b.Username, b.Password)
+	if err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	p := s.svc.PreviewImport(b.Text, creds)
 	ok(w, map[string]any{"items": p.Items, "ready": p.Ready, "subscriptions": p.Subscriptions, "skipped": p.Skipped})
 }
 
@@ -197,22 +204,22 @@ func (s *Server) planChain(w http.ResponseWriter, r *http.Request) {
 // ---- OpenVPN zip bundles ----
 
 func (s *Server) previewZip(w http.ResponseWriter, r *http.Request) {
-	data, err := decodeZipBody(r)
+	data, creds, err := decodeZipBody(r)
 	if err != nil {
 		failErr(w, err, http.StatusBadRequest)
 		return
 	}
-	p := s.svc.PreviewZip(data)
+	p := s.svc.PreviewZip(data, creds)
 	ok(w, map[string]any{"items": p.Items, "ready": p.Ready, "subscriptions": p.Subscriptions, "skipped": p.Skipped})
 }
 
 func (s *Server) importZip(w http.ResponseWriter, r *http.Request) {
-	data, err := decodeZipBody(r)
+	data, creds, err := decodeZipBody(r)
 	if err != nil {
 		failErr(w, err, http.StatusBadRequest)
 		return
 	}
-	res, err := s.svc.ImportZip(r.Context(), data)
+	res, err := s.svc.ImportZip(r.Context(), data, creds)
 	if err != nil {
 		failErr(w, err, http.StatusInternalServerError)
 		return

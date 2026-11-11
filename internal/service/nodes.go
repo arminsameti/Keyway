@@ -28,6 +28,7 @@ type NodeView struct {
 	EngineName      string    `json:"engineName,omitempty"`
 	EngineInstalled bool      `json:"engineInstalled"`
 	EngineReason    string    `json:"engineReason,omitempty"` // why no engine can run it
+	Warning         string    `json:"warning,omitempty"`      // non-blocking: e.g. still needs a username and password
 	HasLink         bool      `json:"hasLink"`
 	Error           string    `json:"error,omitempty"` // the stored link/profile no longer parses, or a chain is broken
 	Chain           bool      `json:"chain"`           // a chain of other servers
@@ -74,6 +75,9 @@ func (s *Service) nodeView(d models.AppData, n models.Node) NodeView {
 		return v
 	}
 	v.Engine, v.EngineName, v.EngineInstalled = e.Name(), e.DisplayName(), s.installed(e.Name())
+	if p.NeedsCredentials() {
+		v.Warning = "Needs a username and password"
+	}
 	return v
 }
 
@@ -470,6 +474,9 @@ func (s *Service) chainView(d models.AppData, v NodeView) NodeView {
 	if err != nil {
 		v.Error = err.Error()
 		return v
+	}
+	if err := checkCredentials(hops, names); err != nil {
+		v.Warning = err.Error()
 	}
 	if err := profile.CheckChain(hops, names); err != nil {
 		v.Error = err.Error()

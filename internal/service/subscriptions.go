@@ -48,8 +48,12 @@ func mergeNodes(d *models.AppData, nodes []models.Node, source string) int {
 
 // Import adds share links from text. http(s):// entries are treated as
 // subscription URLs (and become persisted subscriptions); a pasted subscription
-// link is never mistaken for a proxy node.
-func (s *Service) Import(ctx context.Context, text, subURL string) (ImportResult, error) {
+// link is never mistaken for a proxy node. Import-time credentials fill
+// servers (OpenVPN auth-user-pass) that were imported without any.
+func (s *Service) Import(ctx context.Context, text, subURL string, creds Credentials) (ImportResult, error) {
+	if err := creds.Validate(); err != nil {
+		return ImportResult{}, err
+	}
 	// Same classification as the preview, so what the sheet shows is what is added.
 	var urls []string
 	var nodes []models.Node
@@ -64,6 +68,10 @@ func (s *Service) Import(ctx context.Context, text, subURL string) (ImportResult
 		default:
 			errs = append(errs, skipMessage(it))
 		}
+	}
+	var err error
+	if nodes, err = applyImportCredentials(nodes, creds); err != nil {
+		return ImportResult{}, err
 	}
 	specs, groupWarns := link.MapClashGroups(text, items)
 	errs = append(errs, groupWarns...)

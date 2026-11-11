@@ -218,15 +218,30 @@ func (p Profile) validateOpenVPN() error {
 		return fmt.Errorf("OpenVPN: the client certificate and its key must be given together")
 	}
 	hasCert := strings.TrimSpace(o.Cert) != ""
+	// Profiles that still need credentials (auth-user-pass with nothing
+	// stored) are importable and editable: the user adds the username and
+	// password later. Connecting without them is refused at connect time
+	// (see service.planFor), so the structural checks below still run.
+	if o.NeedsCredential && p.Username == "" {
+		return p.validateOpenVPNStructure(o)
+	}
 	if !hasCert && p.Username == "" {
 		return fmt.Errorf("OpenVPN: needs a client certificate or a username and password")
-	}
-	if o.NeedsCredential && p.Username == "" {
-		return fmt.Errorf("OpenVPN: this profile needs a username and password")
 	}
 	if (p.Username == "") != (p.Password == "") && o.NeedsCredential {
 		return fmt.Errorf("OpenVPN: username and password must be given together")
 	}
+	return p.validateOpenVPNStructure(o)
+}
+
+// NeedsCredentials reports whether the profile is stored and editable but
+// cannot connect yet because the user must still enter a username and
+// password (OpenVPN auth-user-pass with nothing stored).
+func (p Profile) NeedsCredentials() bool {
+	return p.Protocol == OpenVPN && p.OpenVPN != nil && p.OpenVPN.NeedsCredential && strings.TrimSpace(p.Username) == ""
+}
+
+func (p Profile) validateOpenVPNStructure(o *OpenVPNOpts) error {
 	for _, r := range o.Remotes {
 		if strings.TrimSpace(r.Server) == "" || r.Port < 1 || r.Port > 65535 {
 			return fmt.Errorf("OpenVPN: invalid fallback server")
