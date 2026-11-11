@@ -3,9 +3,9 @@ package singbox
 import (
 	"encoding/json"
 	"flag"
+	"net/netip"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"keyway/internal/models"
@@ -47,7 +47,9 @@ func TestTUNCoversIPv4AndIPv6(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fake := []netip.Prefix{netip.MustParsePrefix(fakeIPv4), netip.MustParsePrefix(fakeIPv6)}
 	var v4, v6 bool
+	var addrs []string
 	for _, in := range cfg.Inbounds {
 		if in.Type != "tun" {
 			continue
@@ -56,15 +58,25 @@ func TestTUNCoversIPv4AndIPv6(t *testing.T) {
 			t.Error("the tunnel must route traffic into itself")
 		}
 		for _, a := range in.Address {
-			if strings.Contains(a, ":") {
-				v6 = true
-			} else {
+			addrs = append(addrs, a)
+			p, err := netip.ParsePrefix(a)
+			if err != nil {
+				t.Fatalf("tun address %q: %v", a, err)
+			}
+			if p.Addr().Is4() {
 				v4 = true
+			} else {
+				v6 = true
+			}
+			for _, f := range fake {
+				if p.Overlaps(f) {
+					t.Errorf("tun address %s overlaps the FakeIP range %s", p, f)
+				}
 			}
 		}
 	}
 	if !v4 || !v6 {
-		t.Errorf("tun addresses must cover IPv4 and IPv6, got %v", cfg.Inbounds)
+		t.Errorf("tun addresses must cover IPv4 and IPv6, got %v", addrs)
 	}
 }
 
