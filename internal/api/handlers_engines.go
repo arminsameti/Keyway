@@ -193,3 +193,29 @@ func (s *Server) planChain(w http.ResponseWriter, r *http.Request) {
 	}
 	ok(w, map[string]any{"plan": pl})
 }
+
+// ---- OpenVPN zip bundles ----
+
+func (s *Server) previewZip(w http.ResponseWriter, r *http.Request) {
+	data, err := decodeZipBody(r)
+	if err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	p := s.svc.PreviewZip(data)
+	ok(w, map[string]any{"items": p.Items, "ready": p.Ready, "subscriptions": p.Subscriptions, "skipped": p.Skipped})
+}
+
+func (s *Server) importZip(w http.ResponseWriter, r *http.Request) {
+	data, err := decodeZipBody(r)
+	if err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	res, err := s.svc.ImportZip(r.Context(), data)
+	if err != nil {
+		failErr(w, err, http.StatusInternalServerError)
+		return
+	}
+	ok(w, map[string]any{"added": res.Added, "errors": nonNil(res.Errors), "total": res.Total})
+}
