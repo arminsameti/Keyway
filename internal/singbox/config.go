@@ -211,12 +211,26 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 	return cfg, nil
 }
 
+// Addresses of the TUN interface: sing-box's documented private IPv4 block and
+// unique local IPv6 example. Both stay clear of the FakeIP ranges (dns.go).
+const (
+	tunIPv4 = "172.19.0.1/30"
+	tunIPv6 = "fdfe:dcba:9876::1/126"
+)
+
 // addTUN adds the virtual interface. The first rules keep the engine
 // programs of the other processes (and DNS) out of the loop: DNS queries are
 // answered by sing-box, and an engine process that dials its server through the
 // tunnel would be sent back into it.
+//
+// The interface carries one IPv4 and one IPv6 address: without the IPv6 one
+// the system never routes v6 into the tunnel, so IPv6 traffic (which browsers
+// strongly prefer for WebRTC/STUN) would bypass the proxy and leak the real
+// address.
 func addTUN(cfg *Config, t *profile.TUNOptions, rules []Rule) []Rule {
-	cfg.Inbounds = append(cfg.Inbounds, Inbound{Type: "tun", Tag: "tun-in", Address: []string{"172.19.0.1/30"}, AutoRoute: true,
+	cfg.Inbounds = append(cfg.Inbounds, Inbound{Type: "tun", Tag: "tun-in",
+		Address:     []string{tunIPv4, tunIPv6},
+		AutoRoute:   true,
 		StrictRoute: t.Strict, Stack: orDefault(t.Stack, "mixed"), MTU: t.MTU})
 	cfg.Route.AutoDetectInterface = true
 	cfg.Route.FindProcess = true

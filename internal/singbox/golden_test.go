@@ -3,6 +3,7 @@ package singbox
 import (
 	"encoding/json"
 	"flag"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"testing"
@@ -31,6 +32,51 @@ func golden(t *testing.T, name string, got []byte) {
 	}
 	if string(want) != string(got) {
 		t.Errorf("%s changed.\nwant:\n%s\ngot:\n%s", path, want, got)
+	}
+}
+
+func TestTUNCoversIPv4AndIPv6(t *testing.T) {
+	// A v4-only tunnel lets IPv6 bypass it, and browsers prefer IPv6 for
+	// WebRTC/STUN: the real address would leak on every call. The tunnel
+	// must always carry an address of each family.
+	seg := profile.Single(goldenProfile())
+	seg.TUN = &profile.TUNOptions{Stack: "mixed", MTU: 9000}
+	s := models.DefaultSettings()
+	s.TUN.Enabled = true
+	cfg, err := BuildConfig(seg, s, ruleSetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake := []netip.Prefix{netip.MustParsePrefix(fakeIPv4), netip.MustParsePrefix(fakeIPv6)}
+	var v4, v6 bool
+	var addrs []string
+	for _, in := range cfg.Inbounds {
+		if in.Type != "tun" {
+			continue
+		}
+		if !in.AutoRoute {
+			t.Error("the tunnel must route traffic into itself")
+		}
+		for _, a := range in.Address {
+			addrs = append(addrs, a)
+			p, err := netip.ParsePrefix(a)
+			if err != nil {
+				t.Fatalf("tun address %q: %v", a, err)
+			}
+			if p.Addr().Is4() {
+				v4 = true
+			} else {
+				v6 = true
+			}
+			for _, f := range fake {
+				if p.Overlaps(f) {
+					t.Errorf("tun address %s overlaps the FakeIP range %s", p, f)
+				}
+			}
+		}
+	}
+	if !v4 || !v6 {
+		t.Errorf("tun addresses must cover IPv4 and IPv6, got %v", addrs)
 	}
 }
 

@@ -7,7 +7,7 @@ struct TunCard: View {
 
     var body: some View {
         CardSection(title: "System-wide capture (TUN)",
-                    caption: "Sends all of this Mac's traffic through the proxy, including apps that ignore the system proxy. Needs administrator rights, and sing-box carries the traffic.",
+                    caption: "Sends all of this Mac's traffic through the proxy, including apps that ignore the system proxy. Needs administrator rights, and sing-box carries the traffic. This is also the WebRTC leak protection: browsers call STUN servers over UDP, straight past any system proxy.",
                     footnote: footnote) {
             CardRow(label: "Capture all traffic", first: true) {
                 Toggle("Capture all traffic", isOn: settingBinding(model, \.tun.enabled)).labelsHidden()

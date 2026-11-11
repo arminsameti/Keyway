@@ -18,7 +18,7 @@ Share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `tuic
 - **Routing modes:** global, bypass private and Chinese addresses, or your own **rule sets** (domains, `geosite`, `geoip`, IP ranges, ports, programs). Import rules from Clash or v2rayN and test which rule a destination hits.
 - **Per-app rules:** proxy, bypass or block by application, for example `app:/Applications/Slack.app`.
 - **DNS:** in **Settings › DNS** choose how names resolve: the original default, the system resolver, built-in secure DNS (DNS over HTTPS through the proxy), or your own servers (IP, `https://` DoH, `tls://` DoT). An optional direct resolver answers for the domains your routing bypasses, and FakeIP is available in TUN mode. See [DNS](ENGINES.md#dns).
-- **TUN mode:** capture all traffic on the Mac, not only apps that respect the system proxy. See [TUN mode](ENGINES.md#tun-mode-and-administrator-rights).
+- **TUN mode:** capture all traffic on the Mac, not only apps that respect the system proxy. This is also the WebRTC/UDP leak protection: browsers call STUN servers over UDP, bypassing any system proxy, so only the tunnel keeps those calls inside the proxy. The tunnel carries IPv4 and IPv6. See [TUN mode](ENGINES.md#tun-mode-and-administrator-rights).
 - **System proxy** is set on connect and restored on disconnect, quit or after a crash.
 - **Per-server overrides:** multiplexing, SNI, uTLS fingerprint and TLS fragmentation.
 - **Custom servers:** paste your own Xray or sing-box outbound JSON.
