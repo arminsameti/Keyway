@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"keyway/internal/models"
@@ -31,6 +32,39 @@ func golden(t *testing.T, name string, got []byte) {
 	}
 	if string(want) != string(got) {
 		t.Errorf("%s changed.\nwant:\n%s\ngot:\n%s", path, want, got)
+	}
+}
+
+func TestTUNCoversIPv4AndIPv6(t *testing.T) {
+	// A v4-only tunnel lets IPv6 bypass it, and browsers prefer IPv6 for
+	// WebRTC/STUN: the real address would leak on every call. The tunnel
+	// must always carry an address of each family.
+	seg := profile.Single(goldenProfile())
+	seg.TUN = &profile.TUNOptions{Stack: "mixed", MTU: 9000}
+	s := models.DefaultSettings()
+	s.TUN.Enabled = true
+	cfg, err := BuildConfig(seg, s, ruleSetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v4, v6 bool
+	for _, in := range cfg.Inbounds {
+		if in.Type != "tun" {
+			continue
+		}
+		if !in.AutoRoute {
+			t.Error("the tunnel must route traffic into itself")
+		}
+		for _, a := range in.Address {
+			if strings.Contains(a, ":") {
+				v6 = true
+			} else {
+				v4 = true
+			}
+		}
+	}
+	if !v4 || !v6 {
+		t.Errorf("tun addresses must cover IPv4 and IPv6, got %v", cfg.Inbounds)
 	}
 }
 

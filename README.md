@@ -68,6 +68,9 @@ Yes. The release is a universal build for macOS 14 or later.
 **Does it include a system-wide VPN mode?**
 Yes, TUN mode. It needs administrator approval. See [Engines, DNS and TUN](docs/ENGINES.md#tun-mode-and-administrator-rights).
 
+**Why does a WebRTC leak test show my real IP?**
+Browsers run WebRTC calls over UDP, straight past the macOS system proxy — no proxy client can stop that without capturing all traffic. Turn on TUN mode ("Capture all traffic"): it routes every packet, IPv4 and IPv6, through the proxy.
+
 **Why does macOS warn me when I open it?**
 The builds are not notarized yet. See [Install](#install) for the one-time fix.
 
