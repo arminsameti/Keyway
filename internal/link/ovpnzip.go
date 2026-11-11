@@ -31,7 +31,7 @@ func ParseOVPNZip(data []byte) ([]Item, error) {
 	}
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return nil, fmt.Errorf("not a zip file: %v", err)
+		return nil, fmt.Errorf("not a zip file: %w", err)
 	}
 	if len(zr.File) > ovpnZipMaxFiles {
 		return nil, fmt.Errorf("the zip has too many files (max %d)", ovpnZipMaxFiles)
