@@ -172,6 +172,9 @@ func (s *Server) nodeProfile(w http.ResponseWriter, r *http.Request) {
 	if v.Chain != nil {
 		out["chain"] = v.Chain
 	}
+	if v.Overrides != nil {
+		out["overrides"] = v.Overrides
+	}
 	ok(w, out)
 }
 

@@ -19,6 +19,14 @@ struct ServerOverridesSection: View {
 
     var body: some View {
         Section {
+            Picker("Core", selection: Binding(get: { overrides.engine ?? "" }, set: { overrides.engine = $0.isEmpty ? nil : $0 })) {
+                Text("Automatic").tag("")
+                Text("Xray core").tag("xray")
+                Text("sing-box").tag("sing-box")
+                Text("V2Ray core").tag("v2ray")
+                Text("Mihomo").tag("mihomo")
+                Text("Tor").tag("tor")
+            }
             Picker("Multiplexing", selection: mux) {
                 ForEach(Tri.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
@@ -41,7 +49,7 @@ struct ServerOverridesSection: View {
         } header: {
             Text("Advanced")
         } footer: {
-            Text("Fragmenting helps against filters that read the server name; it needs a TLS or Reality server that this app connects to directly (the first server of a chain). The piece size and delay apply to Xray; sing-box uses its own defaults.")
+            Text("The core runs this server; Automatic follows Settings › Engines. A pinned core must support the server or connecting fails. Fragmenting helps against filters that read the server name; it needs a TLS or Reality server that this app connects to directly (the first server of a chain). The piece size and delay apply to Xray; sing-box uses its own defaults.")
                 .font(.system(size: 11)).foregroundStyle(Palette.secondary).frame(maxWidth: .infinity, alignment: .leading)
         }
     }

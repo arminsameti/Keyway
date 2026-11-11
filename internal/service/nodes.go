@@ -169,6 +169,7 @@ func keepOverrides(o *profile.Overrides) *profile.Overrides {
 		return nil
 	}
 	c := *o
+	c.Engine = o.PinnedEngine() // stored trimmed
 	if o.Mux != nil {
 		m := *o.Mux
 		c.Mux = &m
