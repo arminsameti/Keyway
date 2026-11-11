@@ -4,7 +4,7 @@ The features in more detail. Back to the [README](../README.md).
 
 ## Import from anywhere
 
-Share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `tuic://` and more), **subscription URLs**, a **QR code on your screen**, WireGuard `.conf`, OpenVPN `.ovpn`, **Clash YAML** and **sing-box JSON**. Subscriptions refresh automatically.
+Share links (`vless://`, `vmess://`, `trojan://`, `ss://`, `hysteria2://`, `tuic://` and more), **subscription URLs**, a **QR code on your screen**, WireGuard `.conf`, OpenVPN `.ovpn` (or a **`.zip` of `.ovpn` files with their `ca.crt` / `client.crt` / `client.key` files**), **Clash YAML** and **sing-box JSON**. Subscriptions refresh automatically.
 
 ## Subscription details and groups
 

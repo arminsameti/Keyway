@@ -22,11 +22,13 @@ struct ImportSheet: View {
     @State private var subURL = ""
     @State private var fileText = ""
     @State private var fileName = ""
+    @State private var zipData: Data?
     @State private var preview = ImportPreview()
     @State private var previewError: String?
     @State private var adding = false
     @State private var picking = false
 
+    private var isZip: Bool { zipData != nil }
     private var currentText: String {
         switch method {
         case .paste: return text
@@ -85,6 +87,9 @@ struct ImportSheet: View {
             try? await Task.sleep(for: .milliseconds(350)) // debounce typing
             await runPreview()
         }
+        .task(id: fileName) {
+            await runPreview()
+        }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.item]) { result in
             if case .success(let url) = result { load(url) }
         }
@@ -94,7 +99,7 @@ struct ImportSheet: View {
         switch method {
         case .paste: return "Paste share links, one per line, or a whole WireGuard .conf or OpenVPN .ovpn. An https:// link is added as a subscription that refreshes on its own."
         case .subscription: return "Your provider's subscription URL. Its server list is fetched now and refreshed on its own."
-        case .file: return "An OpenVPN .ovpn, WireGuard .conf, Clash YAML, sing-box JSON or text file, or a screenshot of a QR code."
+        case .file: return "An OpenVPN .ovpn, a .zip of .ovpn files with their certificates, WireGuard .conf, Clash YAML, sing-box JSON or text file, or a screenshot of a QR code."
         }
     }
 
@@ -180,6 +185,17 @@ struct ImportSheet: View {
 
     private func runPreview() async {
         guard let client = model.client else { return }
+        if isZip, let data = zipData {
+            guard !data.isEmpty else { preview = ImportPreview(); previewError = nil; return }
+            do {
+                preview = try await client.previewZip(data)
+                previewError = nil
+            } catch {
+                preview = ImportPreview()
+                previewError = error.localizedDescription
+            }
+            return
+        }
         let t = currentText
         guard !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { preview = ImportPreview(); previewError = nil; return }
         do {
@@ -193,6 +209,19 @@ struct ImportSheet: View {
     private func add() {
         guard let client = model.client else { return }
         adding = true
+        if isZip, let data = zipData {
+            Task {
+                defer { adding = false }
+                do {
+                    let res = try await client.importZip(data)
+                    await model.refreshState()
+                    if res.added == 0, let first = res.errors.first { model.errorMessage = first } else { dismiss() }
+                } catch {
+                    model.errorMessage = error.localizedDescription
+                }
+            }
+            return
+        }
         let t = currentText
         Task {
             defer { adding = false }
@@ -210,6 +239,21 @@ struct ImportSheet: View {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         fileName = url.lastPathComponent
+        if url.pathExtension.lowercased() == "zip" {
+            guard let data = try? Data(contentsOf: url) else {
+                previewError = "The zip file could not be read."
+                return
+            }
+            if data.count > 10 << 20 {
+                previewError = "\(fileName) is too large (max 10 MB)."
+                return
+            }
+            zipData = data
+            fileText = ""
+            previewError = nil
+            return
+        }
+        zipData = nil
         if let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .image) {
             guard let img = NSImage(contentsOf: url), let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
                 previewError = "The image could not be read."

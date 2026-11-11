@@ -57,6 +57,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/nodes/{id}", s.updateNode)
 	mux.HandleFunc("POST /api/nodes/test", s.testServer)
 	mux.HandleFunc("POST /api/import/preview", s.previewImport)
+	mux.HandleFunc("POST /api/import/zip/preview", s.previewZip)
+	mux.HandleFunc("POST /api/import/zip", s.importZip)
 	mux.HandleFunc("POST /api/links/parse", s.parseLink)
 	mux.HandleFunc("POST /api/chains/plan", s.planChain)
 	mux.HandleFunc("GET /api/nodes/{id}/profile", s.nodeProfile)

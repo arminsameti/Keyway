@@ -109,6 +109,12 @@ public final class APIClient: @unchecked Sendable {
 
     public func preview(_ text: String) async throws -> ImportPreview { try await post("/api/import/preview", ["text": text]) }
     public func importText(_ text: String) async throws -> ImportResult { try await post("/api/import", ["text": text], timeout: 60) }
+    public func previewZip(_ data: Data) async throws -> ImportPreview {
+        try await post("/api/import/zip/preview", ["data": data.base64EncodedString()], timeout: 60)
+    }
+    public func importZip(_ data: Data) async throws -> ImportResult {
+        try await post("/api/import/zip", ["data": data.base64EncodedString()], as: ImportResult.self, timeout: 60)
+    }
 
     public func parseLink(_ link: String) async throws -> ProfileBody { try await post("/api/links/parse", ["link": link]) }
     public func nodeProfile(_ id: String) async throws -> ProfileBody { try await get("/api/nodes/\(id)/profile") }
