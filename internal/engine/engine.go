@@ -120,7 +120,16 @@ var ErrNoEngine = errors.New("no engine supports this server")
 // Select picks the engine that runs p. Engines that cannot run p are skipped;
 // among the rest the preferred one wins, then the first in order. An engine
 // that can run p but is not installed only wins when no installed one can.
+//
+// When the profile pins an engine (Overrides.Engine, the manual per-server
+// choice), the pin is strict: only that engine may run it. A pin to an
+// opt-in engine is honoured even when the global preference names another
+// engine; a pin to an engine that cannot run the server is an error, not a
+// silent fallback.
 func Select(p profile.Profile, pref string, engines []Engine, installed func(name string) bool) (Engine, error) {
+	if pin := p.PinnedEngine(); pin != "" {
+		return selectPinned(p, pin, engines, installed)
+	}
 	var capable []Engine
 	var reasons []string
 	for _, e := range engines {
@@ -143,6 +152,28 @@ func Select(p profile.Profile, pref string, engines []Engine, installed func(nam
 		}
 	}
 	return capable[0], &NotInstalledError{Engine: capable[0]}
+}
+
+// selectPinned runs Select for a manually pinned engine: no fallback to
+// another engine.
+func selectPinned(p profile.Profile, pin string, engines []Engine, installed func(string) bool) (Engine, error) {
+	var pinned Engine
+	for _, e := range engines {
+		if e.Name() == pin {
+			pinned = e
+			break
+		}
+	}
+	if pinned == nil {
+		return nil, fmt.Errorf("%w: pinned engine %q is not available (is it turned off?)", ErrNoEngine, pin)
+	}
+	if err := pinned.Supports(p); err != nil {
+		return nil, fmt.Errorf("%w: pinned engine %s cannot run this server: %v", ErrNoEngine, pinned.DisplayName(), err)
+	}
+	if installed(pinned.Name()) {
+		return pinned, nil
+	}
+	return pinned, &NotInstalledError{Engine: pinned}
 }
 
 // preferredFirst moves the preferred engine to the front and keeps the others in

@@ -14,6 +14,7 @@ type Overrides struct {
 	Fragment       *Fragment `json:"fragment,omitempty"`       // split the TLS handshake to get past SNI filtering
 	SNI            string    `json:"sni,omitempty"`            // replaces the server name sent in TLS
 	Fingerprint    string    `json:"fingerprint,omitempty"`    // replaces the uTLS browser fingerprint
+	Engine         string    `json:"engine,omitempty"`         // manual core: "" = auto, else xray | sing-box | v2ray | mihomo | tor
 }
 
 // Fragment describes how the first packets of a TLS connection are split.
@@ -46,13 +47,35 @@ func (f Fragment) Defaults() Fragment {
 
 // IsZero reports whether the overrides change nothing.
 func (o *Overrides) IsZero() bool {
-	return o == nil || (o.Mux == nil && o.MuxConcurrency == 0 && o.Fragment == nil && o.SNI == "" && o.Fingerprint == "")
+	return o == nil || (o.Mux == nil && o.MuxConcurrency == 0 && o.Fragment == nil && o.SNI == "" && o.Fingerprint == "" && o.PinnedEngine() == "")
 }
+
+// PinnedEngine returns the manually chosen core for this server, or "" for
+// automatic selection.
+func (o *Overrides) PinnedEngine() string {
+	if o == nil {
+		return ""
+	}
+	return strings.TrimSpace(o.Engine)
+}
+
+// PinnedEngine returns the manually chosen core for this profile's node, or
+// "" for automatic selection.
+func (p Profile) PinnedEngine() string {
+	return p.Overrides.PinnedEngine()
+}
+
+// ValidEngines are the values Overrides.Engine accepts. They must match the
+// engine.Name* constants in internal/engine.
+var ValidEngines = map[string]bool{"xray": true, "sing-box": true, "v2ray": true, "mihomo": true, "tor": true}
 
 // Validate checks the overrides on their own; Profile.Validate adds what needs the protocol.
 func (o *Overrides) Validate() error {
 	if o == nil {
 		return nil
+	}
+	if o.Engine != "" && !ValidEngines[strings.TrimSpace(o.Engine)] {
+		return fmt.Errorf("unknown engine %q: choose xray, sing-box, v2ray, mihomo, tor or leave it automatic", o.Engine)
 	}
 	if o.MuxConcurrency < 0 || o.MuxConcurrency > 1024 {
 		return fmt.Errorf("mux concurrency must be 1-1024")

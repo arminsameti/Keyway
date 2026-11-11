@@ -24,6 +24,12 @@ func (s Step) Hops(all []profile.Profile) []profile.Profile { return all[s.From:
 // hops from the current position wins; ties go to an installed engine, then to
 // the preferred one.
 //
+// A hop may pin an engine (Overrides.Engine, the manual per-server choice).
+// A pin is strict: the hop must run on that engine. A segment covering hops
+// [i,j) may use engine e only when every pinned hop inside names e. Pinning
+// an opt-in engine allows it for the pinned hops even when the global
+// preference names another engine.
+//
 // When an engine in the plan is not installed, the plan is returned together
 // with a *NotInstalledError so the caller can fetch it and plan again.
 //
@@ -35,13 +41,19 @@ func PlanSegments(hops []profile.Profile, pref string, engines []Engine, install
 	if len(hops) == 0 {
 		return nil, fmt.Errorf("a chain needs at least one server")
 	}
-	var candidates []Engine
+	byName := make(map[string]Engine, len(engines))
 	for _, e := range engines {
-		if eligible(e, pref) {
-			candidates = append(candidates, e)
+		byName[e.Name()] = e
+	}
+	pins := make([]string, len(hops))
+	for i, h := range hops {
+		pins[i] = h.PinnedEngine()
+		if pins[i] != "" {
+			if _, ok := byName[pins[i]]; !ok {
+				return nil, fmt.Errorf("%w: hop %d pins %q, which is not available (is it turned off?)", ErrNoEngine, i+1, pins[i])
+			}
 		}
 	}
-	order := preferredFirst(candidates, pref)
 	var steps []Step
 	for i := 0; i < len(hops); {
 		type cand struct {
@@ -50,25 +62,44 @@ func PlanSegments(hops []profile.Profile, pref string, engines []Engine, install
 			inst bool
 			rank int
 		}
+		effPref := pref
+		if pins[i] != "" {
+			effPref = pins[i]
+		}
+		order := preferredFirst(engines, effPref)
 		var cands []cand
 		var reasons []string
 		for rank, e := range order {
 			to := 0
 			for j := len(hops); j > i; j-- {
+				if !segmentPinsAllow(pins[i:j], e.Name()) {
+					continue
+				}
+				if o, ok := e.(OptIn); ok && o.OptIn() {
+					if e.Name() != pref && !pinsContain(pins[i:j], e.Name()) {
+						continue
+					}
+				}
 				if err := e.SupportsSegment(hops[i:j], i > 0); err == nil {
 					to = j
 					break
 				}
 			}
 			if to == 0 {
-				reasons = append(reasons, reasonFor(e, hops[i:i+1], i > 0))
+				reasons = append(reasons, segmentReason(e, hops[i:i+1], i > 0, pins[i]))
 				continue
 			}
 			cands = append(cands, cand{e, to, installed(e.Name()), rank})
 		}
 		if len(cands) == 0 {
 			if len(hops) == 1 {
+				if pins[0] != "" {
+					return nil, fmt.Errorf("%w: pinned engine %s cannot run this server: %s", ErrNoEngine, pins[0], strings.Join(reasons, "; "))
+				}
 				return nil, fmt.Errorf("%w: %s", ErrNoEngine, strings.Join(reasons, "; "))
+			}
+			if pins[i] != "" {
+				return nil, fmt.Errorf("%w: hop %d (%s) pins %s: %s", ErrNoEngine, i+1, profile.ProtocolName(hops[i].Protocol), pins[i], strings.Join(reasons, "; "))
 			}
 			return nil, fmt.Errorf("%w: hop %d (%s): %s", ErrNoEngine, i+1, profile.ProtocolName(hops[i].Protocol), strings.Join(reasons, "; "))
 		}
@@ -117,6 +148,37 @@ func EngineNames(steps []Step) string {
 		}
 	}
 	return strings.Join(names, " + ")
+}
+
+// segmentPinsAllow reports whether engine name may cover a segment: every
+// pinned hop inside must name it.
+func segmentPinsAllow(pins []string, name string) bool {
+	for _, pin := range pins {
+		if pin != "" && pin != name {
+			return false
+		}
+	}
+	return true
+}
+
+// pinsContain reports whether any hop of the segment pins name.
+func pinsContain(pins []string, name string) bool {
+	for _, pin := range pins {
+		if pin == name {
+			return true
+		}
+	}
+	return false
+}
+
+// segmentReason is why e cannot run a single hop, for error messages. A pin
+// to another engine is reported as such, so a strict choice that excludes e
+// does not look like a capability gap.
+func segmentReason(e Engine, hops []profile.Profile, hasUpstream bool, pin string) string {
+	if pin != "" && pin != e.Name() {
+		return e.DisplayName() + ": not used (this server pins " + pin + ")"
+	}
+	return reasonFor(e, hops, hasUpstream)
 }
 
 // reasonFor is why e cannot run hops as a segment, for error messages.

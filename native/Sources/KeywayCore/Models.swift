@@ -541,15 +541,19 @@ public struct ServerOverrides: Codable, Equatable, Hashable, Sendable {
     public var fragment: Fragment?
     public var sni: String?
     public var fingerprint: String?
+    /// Manual core: nil or empty = automatic, else xray | sing-box | v2ray | mihomo.
+    public var engine: String?
     public init() {}
 
     public static let fingerprints = ["chrome", "firefox", "safari", "ios", "android", "edge", "random", "randomized"]
+    public static let engines = ["xray", "sing-box", "v2ray", "mihomo", "tor"]
 
     /// Drops empty strings and zero values so "nothing set" really sends nothing.
     public var cleaned: ServerOverrides? {
         var o = self
         if (o.sni ?? "").trimmingCharacters(in: .whitespaces).isEmpty { o.sni = nil } else { o.sni = o.sni?.trimmingCharacters(in: .whitespaces) }
         if (o.fingerprint ?? "").isEmpty { o.fingerprint = nil }
+        if let e = o.engine?.trimmingCharacters(in: .whitespacesAndNewlines), !e.isEmpty, Self.engines.contains(e) { o.engine = e } else { o.engine = nil }
         if (o.muxConcurrency ?? 0) <= 0 { o.muxConcurrency = nil }
         if o.mux == nil { o.muxConcurrency = nil }
         if var f = o.fragment {

@@ -169,6 +169,7 @@ func keepOverrides(o *profile.Overrides) *profile.Overrides {
 		return nil
 	}
 	c := *o
+	c.Engine = o.PinnedEngine()
 	if o.Mux != nil {
 		m := *o.Mux
 		c.Mux = &m
@@ -176,6 +177,12 @@ func keepOverrides(o *profile.Overrides) *profile.Overrides {
 	if o.Fragment != nil {
 		f := *o.Fragment
 		c.Fragment = &f
+	}
+	if c.PinnedEngine() == "" {
+		c.Engine = ""
+	}
+	if (&c).IsZero() {
+		return nil
 	}
 	return &c
 }

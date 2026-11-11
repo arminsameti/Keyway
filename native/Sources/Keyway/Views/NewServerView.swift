@@ -128,9 +128,10 @@ struct NewServerView: View {
             ? "Route through several servers in a row, such as OpenVPN, then Xray, then WireGuard. Each server only knows its neighbours."
             : customMode ? "Paste an outbound written for Xray or sing-box. The app adds its own ports, routing rules and traffic counters around it."
             : form.def.about
-        let engine = chainMode ? (chainPlan?.engine ?? "xray") : customMode ? custom.engine : form.engine
+        let effectiveEngine = chainMode ? (chainPlan?.engine ?? "xray") : customMode ? custom.engine : (overrides.engine ?? form.engine)
+        let engine = effectiveEngine
         let badge = Palette.engineBadge(engine)
-        let badgeText: String? = chainMode ? chainPlan.map { "Runs on \($0.engineName)" } : "Runs on \(model.engineBadge(customMode ? custom.engine : form.engine))"
+        let badgeText: String? = chainMode ? chainPlan.map { "Runs on \($0.engineName)" } : "Runs on \(model.engineBadge(effectiveEngine))"
         return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.system(size: 17, weight: .bold))
@@ -294,7 +295,7 @@ struct NewServerView: View {
         do {
             let (name, profile) = try customMode ? custom.profile() : form.profile()
             busy = true
-            show("Testing through \(model.engineBadge(customMode ? custom.engine : form.engine))…", error: false)
+            show("Testing through \(model.engineBadge(customMode ? custom.engine : (overrides.engine ?? form.engine)))…", error: false)
             Task {
                 defer { busy = false }
                 do {
