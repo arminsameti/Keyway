@@ -13,7 +13,8 @@ import (
 
 // PreviewZip is the dry-run of uploading an OpenVPN zip bundle: one item per
 // .ovpn file found, with sibling ca/cert/key files resolved. Nothing is saved.
-func (s *Service) PreviewZip(data []byte) Preview {
+// Import-time credentials fill profiles that still need them.
+func (s *Service) PreviewZip(data []byte, creds Credentials) Preview {
 	d := s.store.Get()
 	out := Preview{Items: []PreviewItem{}}
 	items, err := link.ParseOVPNZip(data)
@@ -26,10 +27,11 @@ func (s *Service) PreviewZip(data []byte) Preview {
 		pi := PreviewItem{Line: it.Line, Status: it.Kind, Scheme: it.Scheme, Reason: it.Reason}
 		switch it.Kind {
 		case link.KindReady:
-			p := it.Result.Profile
+			p := fillCredentials(it.Result.Profile, creds)
 			pi.CountryCode, pi.Name = profile.SplitCountry(it.Result.Node.Name)
 			pi.Protocol, pi.Transport = profile.ProtocolName(p.Protocol), p.DisplayTransport()
 			_, pi.Duplicate = d.FindNode(it.Result.Node.ID)
+			pi.NeedsCredential = p.NeedsCredentials()
 			if e, err := runsOn(p, nil, d.Settings.EnginePreference, s.engineList(), s.installed); err == nil {
 				pi.Engine, pi.EngineName, pi.EngineInstalled = e.Name(), e.DisplayName(), s.installed(e.Name())
 			} else {
@@ -60,8 +62,12 @@ func (s *Service) PreviewZip(data []byte) Preview {
 	return out
 }
 
-// ImportZip adds the servers from an OpenVPN zip bundle.
-func (s *Service) ImportZip(_ context.Context, data []byte) (ImportResult, error) {
+// ImportZip adds the servers from an OpenVPN zip bundle. Import-time
+// credentials fill servers that were imported without any.
+func (s *Service) ImportZip(_ context.Context, data []byte, creds Credentials) (ImportResult, error) {
+	if err := creds.Validate(); err != nil {
+		return ImportResult{}, err
+	}
 	items, err := link.ParseOVPNZip(data)
 	if err != nil {
 		return ImportResult{Errors: []string{capitalizeZip(err.Error())}, Total: len(s.store.Get().Nodes)}, nil
@@ -75,6 +81,9 @@ func (s *Service) ImportZip(_ context.Context, data []byte) (ImportResult, error
 		default:
 			errs = append(errs, skipMessage(it))
 		}
+	}
+	if nodes, err = applyImportCredentials(nodes, creds); err != nil {
+		return ImportResult{}, err
 	}
 	var res ImportResult
 	if len(nodes) > 0 {

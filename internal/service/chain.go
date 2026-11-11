@@ -101,6 +101,9 @@ func (s *Service) hopsOf(d models.AppData, ids []string) ([]profile.Profile, []s
 //
 // final names the engine that must serve the user's traffic ("" = any).
 func (s *Service) planFor(hops []profile.Profile, names []string, d models.AppData, final string) (*connPlan, error) {
+	if err := checkCredentials(hops, names); err != nil {
+		return nil, err
+	}
 	if len(hops) > 1 {
 		if err := profile.CheckChain(hops, names); err != nil {
 			return nil, &models.ValidationError{Msg: err.Error()}
@@ -124,6 +127,22 @@ func (s *Service) planFor(hops []profile.Profile, names []string, d models.AppDa
 		pl.installs = append(pl.installs, engine.Install{Version: ver, Bin: bin, AssetDir: dir})
 	}
 	return pl, nil
+}
+
+// checkCredentials refuses to run a server whose profile still needs a
+// username and password. Such servers are stored and editable, but cannot
+// connect, test or measure until the credentials are added.
+func checkCredentials(hops []profile.Profile, names []string) error {
+	for i, h := range hops {
+		if h.NeedsCredentials() {
+			name := "this server"
+			if i < len(names) && strings.TrimSpace(names[i]) != "" {
+				name = "“" + names[i] + "”"
+			}
+			return &models.ValidationError{Msg: fmt.Sprintf("%s needs a username and password; add them in the server's settings", name)}
+		}
+	}
+	return nil
 }
 
 // newBridge reserves a loopback port with fresh credentials for joining two

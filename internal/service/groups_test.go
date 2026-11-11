@@ -83,7 +83,7 @@ func TestGroupChoiceSelectNeverMoves(t *testing.T) {
 // importNodes adds servers by share link and returns their IDs in order.
 func importNodes(t *testing.T, svc *Service, links ...string) []string {
 	t.Helper()
-	if _, err := svc.Import(context.Background(), strings.Join(links, "\n"), ""); err != nil {
+	if _, err := svc.Import(context.Background(), strings.Join(links, "\n"), "", Credentials{}); err != nil {
 		t.Fatal(err)
 	}
 	var ids []string
@@ -459,7 +459,7 @@ func TestClashSubscriptionGroups(t *testing.T) {
 
 func TestPastedClashConfigCreatesGroups(t *testing.T) {
 	svc := newTestService(t)
-	res, err := svc.Import(context.Background(), clashSub, "")
+	res, err := svc.Import(context.Background(), clashSub, "", Credentials{})
 	if err != nil || res.Added != 2 {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
@@ -471,7 +471,7 @@ func TestPastedClashConfigCreatesGroups(t *testing.T) {
 		t.Fatalf("a pasted config gives groups the user owns: %+v", gs)
 	}
 	// pasting it again does not pile up copies
-	res, _ = svc.Import(context.Background(), clashSub, "")
+	res, _ = svc.Import(context.Background(), clashSub, "", Credentials{})
 	if got := len(svc.store.Get().Groups); got != 1 {
 		t.Errorf("groups after a second paste = %d (%v)", got, res.Errors)
 	}

@@ -52,6 +52,7 @@ public struct Node: Codable, Identifiable, Hashable, Sendable {
     public var engineName: String?
     public var engineInstalled: Bool
     public var engineReason: String?
+    public var warning: String?
     public var hasLink: Bool
     public var error: String?
     public var chain: Bool?
@@ -292,11 +293,15 @@ public struct PreviewItem: Codable, Hashable, Sendable, Identifiable {
     public var engineInstalled: Bool
     public var duplicate: Bool
     public var reason: String?
+    public var needsCredential: Bool?
+    /// True when the server is ready but still needs a username and password.
+    public var needsCredentials: Bool { needsCredential ?? false }
     public init(line: Int, status: String, scheme: String?, name: String, countryCode: String?, protocol p: String?, transport: String?,
-                engine: String?, engineName: String?, engineInstalled: Bool, duplicate: Bool, reason: String?) {
+                engine: String?, engineName: String?, engineInstalled: Bool, duplicate: Bool, reason: String?, needsCredential: Bool? = nil) {
         self.line = line; self.status = status; self.scheme = scheme; self.name = name; self.countryCode = countryCode
         self.protocol = p; self.transport = transport; self.engine = engine; self.engineName = engineName
         self.engineInstalled = engineInstalled; self.duplicate = duplicate; self.reason = reason
+        self.needsCredential = needsCredential
     }
 }
 

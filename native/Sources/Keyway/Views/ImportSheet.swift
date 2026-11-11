@@ -23,12 +23,19 @@ struct ImportSheet: View {
     @State private var fileText = ""
     @State private var fileName = ""
     @State private var zipData: Data?
+    @State private var username = ""
+    @State private var password = ""
     @State private var preview = ImportPreview()
     @State private var previewError: String?
     @State private var adding = false
     @State private var picking = false
 
     private var isZip: Bool { zipData != nil }
+    /// Some previewed servers were imported without their login. The fields
+    /// stay once typed so the form does not jump while filling them.
+    private var needsImportCredentials: Bool {
+        preview.items.contains { $0.needsCredentials } || !username.isEmpty || !password.isEmpty
+    }
     private var currentText: String {
         switch method {
         case .paste: return text
@@ -57,6 +64,21 @@ struct ImportSheet: View {
                     Text("Found").font(.system(size: 12, weight: .semibold))
                     Spacer()
                     Text(Format.previewSummary(preview)).font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                }
+                if needsImportCredentials {
+                    VStack(alignment: .leading, spacing: 6) {
+                        TextField("Username", text: $username)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12))
+                            .accessibilityLabel("Username for servers that need one")
+                        SecureField("Password", text: $password)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12))
+                            .accessibilityLabel("Password for servers that need one")
+                        Text("These servers need a username and password. Fill them here or later in each server's settings.")
+                            .font(.system(size: 11)).foregroundStyle(Palette.secondary)
+                    }
+                    .padding(.vertical, 4)
                 }
                 previewList
                 Text("Recognizes VLESS, VMess, Trojan, Shadowsocks, SOCKS, HTTP(S), Hysteria, Hysteria2, TUIC, WireGuard, OpenVPN, AnyTLS, ShadowTLS, NaiveProxy and SSH links, plus Clash YAML and sing-box JSON.")
@@ -88,6 +110,9 @@ struct ImportSheet: View {
             await runPreview()
         }
         .task(id: fileName) {
+            await runPreview()
+        }
+        .task(id: username + "\n" + password) {
             await runPreview()
         }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.item]) { result in
@@ -165,6 +190,7 @@ struct ImportSheet: View {
     private func readyDetail(_ i: PreviewItem) -> String {
         var parts = [i.protocol, i.transport].compactMap { $0 }
         if i.engine == "sing-box" { parts.append("uses sing-box") }
+        if i.needsCredentials { parts.append("needs username and password") }
         if i.duplicate { parts.append("already added") }
         return parts.joined(separator: " · ")
     }
@@ -188,7 +214,7 @@ struct ImportSheet: View {
         if isZip, let data = zipData {
             guard !data.isEmpty else { preview = ImportPreview(); previewError = nil; return }
             do {
-                preview = try await client.previewZip(data)
+                preview = try await client.previewZip(data, username: username, password: password)
                 previewError = nil
             } catch {
                 preview = ImportPreview()
@@ -199,7 +225,7 @@ struct ImportSheet: View {
         let t = currentText
         guard !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { preview = ImportPreview(); previewError = nil; return }
         do {
-            preview = try await client.preview(t)
+            preview = try await client.preview(t, username: username, password: password)
             previewError = nil
         } catch {
             previewError = error.localizedDescription
@@ -213,7 +239,7 @@ struct ImportSheet: View {
             Task {
                 defer { adding = false }
                 do {
-                    let res = try await client.importZip(data)
+                    let res = try await client.importZip(data, username: username, password: password)
                     await model.refreshState()
                     if res.added == 0, let first = res.errors.first { model.errorMessage = first } else { dismiss() }
                 } catch {
@@ -226,7 +252,7 @@ struct ImportSheet: View {
         Task {
             defer { adding = false }
             do {
-                let res = try await client.importText(t)
+                let res = try await client.importText(t, username: username, password: password)
                 await model.refreshState()
                 if res.added == 0, let first = res.errors.first { model.errorMessage = first } else { dismiss() }
             } catch {

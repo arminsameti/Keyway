@@ -107,13 +107,26 @@ public final class APIClient: @unchecked Sendable {
         try await post("/api/pick-fastest", PickRequest(reconnect: reconnect), timeout: 130)
     }
 
-    public func preview(_ text: String) async throws -> ImportPreview { try await post("/api/import/preview", ["text": text]) }
-    public func importText(_ text: String) async throws -> ImportResult { try await post("/api/import", ["text": text], timeout: 60) }
-    public func previewZip(_ data: Data) async throws -> ImportPreview {
-        try await post("/api/import/zip/preview", ["data": data.base64EncodedString()], timeout: 60)
+    public func preview(_ text: String, username: String? = nil, password: String? = nil) async throws -> ImportPreview {
+        try await post("/api/import/preview", importBody(text: text, username: username, password: password))
     }
-    public func importZip(_ data: Data) async throws -> ImportResult {
-        try await post("/api/import/zip", ["data": data.base64EncodedString()], as: ImportResult.self, timeout: 60)
+    public func importText(_ text: String, username: String? = nil, password: String? = nil) async throws -> ImportResult {
+        try await post("/api/import", importBody(text: text, username: username, password: password), timeout: 60)
+    }
+    public func previewZip(_ data: Data, username: String? = nil, password: String? = nil) async throws -> ImportPreview {
+        try await post("/api/import/zip/preview", importBody(data: data.base64EncodedString(), username: username, password: password), timeout: 60)
+    }
+    public func importZip(_ data: Data, username: String? = nil, password: String? = nil) async throws -> ImportResult {
+        try await post("/api/import/zip", importBody(data: data.base64EncodedString(), username: username, password: password), as: ImportResult.self, timeout: 60)
+    }
+
+    private func importBody(text: String? = nil, data: String? = nil, username: String?, password: String?) -> [String: String] {
+        var b: [String: String] = [:]
+        if let text { b["text"] = text }
+        if let data { b["data"] = data }
+        if let u = username, !u.isEmpty { b["username"] = u }
+        if let p = password, !p.isEmpty { b["password"] = p }
+        return b
     }
 
     public func parseLink(_ link: String) async throws -> ProfileBody { try await post("/api/links/parse", ["link": link]) }

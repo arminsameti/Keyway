@@ -8,6 +8,7 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 
 	"keyway/internal/models"
+	"keyway/internal/service"
 )
 
 const (
@@ -109,14 +110,21 @@ func (s *Server) setActive(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) importLinks(w http.ResponseWriter, r *http.Request) {
 	var b struct {
-		Text string `json:"text"`
-		URL  string `json:"url"`
+		Text     string `json:"text"`
+		URL      string `json:"url"`
+		Username string `json:"username"`
+		Password string `json:"password"`
 	}
 	if err := decode(r, &b, false); err != nil {
 		failErr(w, err, http.StatusBadRequest)
 		return
 	}
-	res, err := s.svc.Import(r.Context(), b.Text, b.URL)
+	creds, err := service.ValidateCredentials(b.Username, b.Password)
+	if err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	res, err := s.svc.Import(r.Context(), b.Text, b.URL, creds)
 	if err != nil {
 		failErr(w, err, http.StatusInternalServerError)
 		return

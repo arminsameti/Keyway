@@ -80,7 +80,7 @@ func TestPreviewZipResolvesExternalFiles(t *testing.T) {
 		"client.crt":  "ZIP-CERT",
 		"client.key":  "ZIP-KEY",
 	})
-	p := svc.PreviewZip(data)
+	p := svc.PreviewZip(data, Credentials{})
 	if p.Ready != 1 {
 		t.Fatalf("ready = %d, skipped = %d items = %+v", p.Ready, p.Skipped, p.Items)
 	}
@@ -94,7 +94,7 @@ func TestImportZipAddsNodes(t *testing.T) {
 		"client.crt": "ZIP-CERT",
 		"client.key": "ZIP-KEY",
 	})
-	res, err := svc.ImportZip(context.Background(), data)
+	res, err := svc.ImportZip(context.Background(), data, Credentials{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestImportZipAddsNodes(t *testing.T) {
 func TestImportZipMissingFileReportsError(t *testing.T) {
 	svc := newTestService(t)
 	data := makeOVPNZip(t, map[string]string{"a.ovpn": zipOVPN})
-	res, err := svc.ImportZip(context.Background(), data)
+	res, err := svc.ImportZip(context.Background(), data, Credentials{})
 	if err != nil {
 		t.Fatal(err)
 	}
