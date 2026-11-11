@@ -128,10 +128,9 @@ struct NewServerView: View {
             ? "Route through several servers in a row, such as OpenVPN, then Xray, then WireGuard. Each server only knows its neighbours."
             : customMode ? "Paste an outbound written for Xray or sing-box. The app adds its own ports, routing rules and traffic counters around it."
             : form.def.about
-        let effectiveEngine = chainMode ? (chainPlan?.engine ?? "xray") : customMode ? custom.engine : (overrides.engine ?? form.engine)
-        let engine = effectiveEngine
+        let engine = chainMode ? (chainPlan?.engine ?? "xray") : customMode ? custom.engine : (overrides.engine ?? form.engine)
         let badge = Palette.engineBadge(engine)
-        let badgeText: String? = chainMode ? chainPlan.map { "Runs on \($0.engineName)" } : "Runs on \(model.engineBadge(effectiveEngine))"
+        let badgeText: String? = chainMode ? chainPlan.map { "Runs on \($0.engineName)" } : "Runs on \(model.engineBadge(engine))"
         return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.system(size: 17, weight: .bold))

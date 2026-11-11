@@ -541,7 +541,7 @@ public struct ServerOverrides: Codable, Equatable, Hashable, Sendable {
     public var fragment: Fragment?
     public var sni: String?
     public var fingerprint: String?
-    /// Manual core: nil or empty = automatic, else xray | sing-box | v2ray | mihomo.
+    /// Manual core: nil or empty = automatic, else xray | sing-box | v2ray | mihomo | tor.
     public var engine: String?
     public init() {}
 

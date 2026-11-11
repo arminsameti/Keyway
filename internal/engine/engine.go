@@ -168,7 +168,7 @@ func selectPinned(p profile.Profile, pin string, engines []Engine, installed fun
 		return nil, fmt.Errorf("%w: pinned engine %q is not available (is it turned off?)", ErrNoEngine, pin)
 	}
 	if err := pinned.Supports(p); err != nil {
-		return nil, fmt.Errorf("%w: pinned engine %s cannot run this server: %v", ErrNoEngine, pinned.DisplayName(), err)
+		return nil, fmt.Errorf("%w: pinned engine %s cannot run this server: %w", ErrNoEngine, pinned.DisplayName(), err)
 	}
 	if installed(pinned.Name()) {
 		return pinned, nil

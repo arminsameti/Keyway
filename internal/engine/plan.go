@@ -75,10 +75,8 @@ func PlanSegments(hops []profile.Profile, pref string, engines []Engine, install
 				if !segmentPinsAllow(pins[i:j], e.Name()) {
 					continue
 				}
-				if o, ok := e.(OptIn); ok && o.OptIn() {
-					if e.Name() != pref && !pinsContain(pins[i:j], e.Name()) {
-						continue
-					}
+				if !eligible(e, pref) && !pinsContain(pins[i:j], e.Name()) {
+					continue
 				}
 				if err := e.SupportsSegment(hops[i:j], i > 0); err == nil {
 					to = j
@@ -86,7 +84,11 @@ func PlanSegments(hops []profile.Profile, pref string, engines []Engine, install
 				}
 			}
 			if to == 0 {
-				reasons = append(reasons, segmentReason(e, hops[i:i+1], i > 0, pins[i]))
+				// An opt-in engine nobody chose for this hop was never a
+				// candidate, so it has no reason to report.
+				if eligible(e, pref) || pins[i] == e.Name() {
+					reasons = append(reasons, segmentReason(e, hops[i:i+1], i > 0, pins[i]))
+				}
 				continue
 			}
 			cands = append(cands, cand{e, to, installed(e.Name()), rank})

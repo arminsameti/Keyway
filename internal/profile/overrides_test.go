@@ -3,7 +3,7 @@ package profile
 import "testing"
 
 func TestOverridesEngineValidate(t *testing.T) {
-	for _, good := range []string{"", "xray", "sing-box", "v2ray", "mihomo", "tor", " sing-box "} {
+	for _, good := range []string{"", "xray", "sing-box", "v2ray", "mihomo", "tor", " sing-box ", "  "} {
 		if err := (&Overrides{Engine: good}).Validate(); err != nil {
 			t.Fatalf("engine %q: %v", good, err)
 		}

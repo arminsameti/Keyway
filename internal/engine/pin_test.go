@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"keyway/internal/profile"
@@ -77,5 +78,31 @@ func TestPlanPinExtendsWhenCapable(t *testing.T) {
 	}
 	if len(steps) != 1 || steps[0].Engine.Name() != NameSingBox {
 		t.Fatalf("plan = %s, want single sing-box run", EngineNames(steps))
+	}
+}
+
+// Every engine name must be accepted as a pin, so the list in
+// internal/profile cannot drift from the engines that exist.
+func TestEveryEngineNameIsAValidPin(t *testing.T) {
+	for _, e := range allEngines() {
+		if err := (&profile.Overrides{Engine: e.Name()}).Validate(); err != nil {
+			t.Errorf("%s: %v", e.Name(), err)
+		}
+	}
+}
+
+// An opt-in engine that was neither preferred nor pinned is not a candidate,
+// so a failing plan must not list it among the reasons.
+func TestPlanFailureOmitsUnchosenOptInEngines(t *testing.T) {
+	tuic := profile.Profile{Protocol: profile.TUIC, Server: "a.example", Port: 443, UUID: testUUID,
+		Transport: profile.Transport{Type: "quic"}, Overrides: &profile.Overrides{Engine: NameXray}}
+	_, err := PlanSegments([]profile.Profile{tuic}, NameXray, allEngines(), everyInstalled, "")
+	if !errors.Is(err, ErrNoEngine) {
+		t.Fatalf("err = %v", err)
+	}
+	for _, e := range allEngines() {
+		if o, ok := e.(OptIn); ok && o.OptIn() && strings.Contains(err.Error(), e.DisplayName()) {
+			t.Errorf("unchosen opt-in engine %s named in: %v", e.DisplayName(), err)
+		}
 	}
 }

@@ -65,16 +65,16 @@ func (p Profile) PinnedEngine() string {
 	return p.Overrides.PinnedEngine()
 }
 
-// ValidEngines are the values Overrides.Engine accepts. They must match the
-// engine.Name* constants in internal/engine.
-var ValidEngines = map[string]bool{"xray": true, "sing-box": true, "v2ray": true, "mihomo": true, "tor": true}
+// validEngines are the values Overrides.Engine accepts. They must match the
+// engine.Name* constants in internal/engine (a test there checks it).
+var validEngines = map[string]bool{"xray": true, "sing-box": true, "v2ray": true, "mihomo": true, "tor": true}
 
 // Validate checks the overrides on their own; Profile.Validate adds what needs the protocol.
 func (o *Overrides) Validate() error {
 	if o == nil {
 		return nil
 	}
-	if o.Engine != "" && !ValidEngines[strings.TrimSpace(o.Engine)] {
+	if pin := o.PinnedEngine(); pin != "" && !validEngines[pin] {
 		return fmt.Errorf("unknown engine %q: choose xray, sing-box, v2ray, mihomo, tor or leave it automatic", o.Engine)
 	}
 	if o.MuxConcurrency < 0 || o.MuxConcurrency > 1024 {
