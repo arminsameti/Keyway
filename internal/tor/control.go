@@ -16,7 +16,8 @@ import (
 	"keyway/internal/profile"
 )
 
-// Timeouts for Tor to build its first circuit: bridges add a hop to every step.
+// Timeouts for Tor to build its first circuit: bridges and chained hops add
+// an extra step to every bootstrap round trip, so both get the longer budget.
 const (
 	BootstrapTimeout       = 60 * time.Second
 	BootstrapTimeoutBridge = 120 * time.Second
@@ -81,15 +82,25 @@ func (ct *control) phase() (int, string, error) {
 	return pct, sum, nil
 }
 
+// bootstrapLimit is how long Tor may take to build its first circuit. A Tor
+// that dials through a chain hop bootstraps over that hop exactly like a
+// bridged Tor dials over its bridge, so both get the longer budget.
+func bootstrapLimit(seg profile.Segment) time.Duration {
+	if seg.Upstream != nil {
+		return BootstrapTimeoutBridge
+	}
+	if len(seg.Hops) == 1 && seg.Hops[0].Tor != nil && seg.Hops[0].Tor.Bridges != profile.TorBridgeNone {
+		return BootstrapTimeoutBridge
+	}
+	return BootstrapTimeout
+}
+
 // WaitReady blocks until Tor reports 100% bootstrap on its control port.
 func WaitReady(ctx context.Context, seg profile.Segment, progress func(int, string)) error {
 	if seg.Runtime == nil {
 		return fmt.Errorf("internal error: Tor has no control port")
 	}
-	limit := BootstrapTimeout
-	if len(seg.Hops) == 1 && seg.Hops[0].Tor != nil && seg.Hops[0].Tor.Bridges != profile.TorBridgeNone {
-		limit = BootstrapTimeoutBridge
-	}
+	limit := bootstrapLimit(seg)
 	ctx, cancel := context.WithTimeout(ctx, limit)
 	defer cancel()
 	last := "starting"
