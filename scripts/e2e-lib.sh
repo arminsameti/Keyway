@@ -86,7 +86,9 @@ add_node() { # add_node NAME PROFILE-JSON -> node id
 }
 connect_to() { # connect_to NODE-ID
   api POST /api/active "{\"id\":\"$1\"}" >/dev/null
-  [ "$(api POST /api/connect | jget "d.get('ok')")" = True ] || fail "connect failed"
+  local res
+  res="$(api POST /api/connect)"
+  [ "$(echo "$res" | jget "d.get('ok')")" = True ] || fail "connect failed: $res"
 }
 disconnect() { api POST /api/disconnect >/dev/null; }
 running_label() { api GET /api/status | jget "d.get('engineLabel','')"; }
