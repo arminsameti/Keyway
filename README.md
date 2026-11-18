@@ -9,7 +9,7 @@
 Import a link or subscription, chain servers together, and connect in one click.
 Built in SwiftUI. No Electron, no web view, no config files.
 
-[**Download for macOS**](https://github.com/arminsameti/keyway/releases/latest) · [Features](#features) · [FAQ](#faq) · [Docs](#documentation) · [Contribute](CONTRIBUTING.md)
+[**Download for macOS**](https://github.com/arminsameti/keyway/releases/latest) · [Website](https://arminsameti.github.io/Keyway/) · [Features](#features) · [FAQ](#faq) · [Docs](#documentation) · [Contribute](CONTRIBUTING.md)
 
 ![Platform](https://img.shields.io/badge/macOS-14%2B-black) ![Apple silicon and Intel](https://img.shields.io/badge/Apple%20silicon%20%2B%20Intel-universal-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
