@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keyway: native macOS client for Xray, sing-box, V2Ray and Tor</title>
+<meta name="description" content="Keyway is a free, open-source native macOS V2Ray client. Import VLESS, VMess, Trojan or WireGuard links, chain proxies across protocols, and connect in one click. Built in SwiftUI.">
+<link rel="canonical" href="https://arminsameti.github.io/Keyway/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#0b0d12">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Keyway: native macOS client for Xray, sing-box, V2Ray and Tor">
+<meta property="og:description" content="Free, open-source macOS app. Import links and subscriptions, build multi-hop proxy chains, connect in one click.">
+<meta property="og:url" content="https://arminsameti.github.io/Keyway/">
+<meta property="og:image" content="https://arminsameti.github.io/Keyway/img/servers-light.png">
+<meta property="og:image:alt" content="Keyway server list on macOS, connected, with latency per server">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "name": "Keyway",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "macOS 14 or later",
+      "description": "A native macOS client for Xray-core, sing-box, V2Ray core, Mihomo and Tor, with proxy chaining.",
+      "url": "https://arminsameti.github.io/Keyway/",
+      "downloadUrl": "https://github.com/arminsameti/Keyway/releases/latest",
+      "license": "https://opensource.org/licenses/MIT",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "screenshot": "https://arminsameti.github.io/Keyway/img/servers-light.png"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "Is Keyway a V2Ray or Xray client for Mac?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. It imports V2Ray and Xray links and subscriptions, and runs Xray-core, with V2Ray core as an option." } },
+        { "@type": "Question", "name": "Does Keyway work on Apple silicon and Intel Macs?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The release is a universal build for macOS 14 or later." } },
+        { "@type": "Question", "name": "Does Keyway include a system-wide VPN mode?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes, TUN mode. It needs administrator approval and routes all IPv4 and IPv6 traffic through the proxy." } },
+        { "@type": "Question", "name": "Is Keyway a proxy or VPN service?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. It is a client. You bring your own servers or subscription." } },
+        { "@type": "Question", "name": "Why does macOS warn me when I open Keyway?",
+          "acceptedAnswer": { "@type": "Answer", "text": "The builds are not notarized yet. Right-click the app, choose Open and confirm, or install with Homebrew, which handles it for you." } }
+      ]
+    }
+  ]
+}
+</script>
+<style>
+:root{
+  --bg:#ffffff; --bg2:#f5f6f8; --fg:#14161b; --muted:#5a6070; --line:#e3e6ec;
+  --accent:#2f6df6; --accent-fg:#fff; --code:#eef0f4;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0b0d12; --bg2:#12151c; --fg:#eceef3; --muted:#9aa1b2; --line:#232733; --accent:#5b8cff; --accent-fg:#0b0d12; --code:#171b24; }
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+header.nav{display:flex;align-items:center;justify-content:space-between;padding:18px 0}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1.1rem;color:var(--fg);text-decoration:none}
+.brand img{width:32px;height:32px}
+.nav nav a{color:var(--muted);text-decoration:none;margin-left:20px;font-size:.95rem}
+.nav nav a:hover{color:var(--fg)}
+.hero{text-align:center;padding:48px 0 24px}
+h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.15;margin:0 0 16px;letter-spacing:-.02em}
+.sub{max-width:660px;margin:0 auto 28px;color:var(--muted);font-size:1.15rem}
+.cta{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-bottom:20px}
+.btn{display:inline-block;padding:12px 22px;border-radius:10px;font-weight:600;text-decoration:none;border:1px solid var(--line);color:var(--fg);background:var(--bg2)}
+.btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.meta{color:var(--muted);font-size:.9rem}
+pre{background:var(--code);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;margin:0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+.shot{margin:36px auto 0;max-width:960px}
+.shot img{width:100%;height:auto;border-radius:12px;border:1px solid var(--line);box-shadow:0 20px 60px rgba(0,0,0,.18)}
+.dark-only{display:none}
+@media (prefers-color-scheme:dark){ .light-only{display:none} .dark-only{display:block} }
+section{padding:56px 0}
+section.alt{background:var(--bg2)}
+h2{font-size:1.8rem;margin:0 0 8px;letter-spacing:-.01em}
+.lead{color:var(--muted);margin:0 0 32px;max-width:680px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:20px}
+section.alt .card{background:var(--bg)}
+.card h3{margin:0 0 6px;font-size:1.05rem}
+.card p{margin:0;color:var(--muted);font-size:.96rem}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px;align-items:start}
+.two img{width:100%;height:auto;border-radius:10px;border:1px solid var(--line)}
+.two figcaption{color:var(--muted);font-size:.9rem;margin-top:8px}
+figure{margin:0}
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+.tablewrap{overflow-x:auto}
+details{border-bottom:1px solid var(--line);padding:14px 0}
+summary{cursor:pointer;font-weight:600}
+details p{margin:10px 0 0;color:var(--muted)}
+footer{padding:36px 0 56px;color:var(--muted);font-size:.92rem;border-top:1px solid var(--line)}
+footer a{color:var(--muted);margin-right:16px}
+@media (max-width:600px){ .nav nav a{margin-left:12px} section{padding:40px 0} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="nav">
+    <a class="brand" href="./"><img src="img/icon.png" alt="" width="32" height="32">Keyway</a>
+    <nav aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+      <a href="https://github.com/arminsameti/Keyway">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+  <div class="hero">
+    <h1>The native macOS client for Xray, sing-box, V2Ray and Tor</h1>
+    <p class="sub">Import a link or subscription, chain servers together, and connect in one click. Built in SwiftUI. No Electron, no web view, no config files.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/arminsameti/Keyway/releases/latest">Download for macOS</a>
+      <a class="btn" href="https://github.com/arminsameti/Keyway">View on GitHub</a>
+    </div>
+    <p class="meta">Free and open source (MIT) · macOS 14+ · Apple silicon and Intel</p>
+    <div class="shot">
+      <img class="light-only" src="img/servers-light.png" width="1800" height="1207" alt="Keyway server list on macOS, connected, with latency per server">
+      <img class="dark-only" src="img/servers-dark.png" width="1800" height="1207" alt="Keyway server list on macOS in dark mode, connected, with latency per server">
+    </div>
+  </div>
+  </main>
+</div>
+
+<section id="features" class="alt">
+  <div class="wrap">
+    <h2>A V2Ray client that feels like a Mac app</h2>
+    <p class="lead">Keyway downloads and manages the engines, picks the right one for every server, and lets you build multi-hop proxy chains across protocols.</p>
+    <div class="grid">
+      <div class="card"><h3>Proxy chaining</h3><p>Route traffic through any number of servers and mix protocols, for example OpenVPN, then VLESS Reality, then WireGuard. Test Connection checks every hop before you save.</p></div>
+      <div class="card"><h3>Every protocol</h3><p>VLESS (Reality, Vision, XHTTP), VMess, Trojan, Shadowsocks, Hysteria2, TUIC, WireGuard, OpenVPN and more, each run on an engine that supports it.</p></div>
+      <div class="card"><h3>Import from anywhere</h3><p>Share links, subscription URLs, a QR code on your screen, WireGuard and OpenVPN files, Clash YAML and sing-box JSON.</p></div>
+      <div class="card"><h3>Subscriptions and groups</h3><p>Traffic used, quota and expiry next to each subscription, plus Manual, Fallback and Fastest groups that act as one server.</p></div>
+      <div class="card"><h3>Routing, DNS and TUN</h3><p>Global, bypass or your own rules, per-app rules, secure DNS, FakeIP, and TUN mode to capture all traffic over IPv4 and IPv6.</p></div>
+      <div class="card"><h3>Tor, optionally</h3><p>Use a Tor server on its own or as a hop in a chain, with obfs4, Snowflake and meek bridges.</p></div>
+      <div class="card"><h3>Private by design</h3><p>Everything stays on your Mac. Keyway sends nothing except engine downloads, your subscription URLs and an optional daily update check.</p></div>
+      <div class="card"><h3>Fast</h3><p>Test latency through the real engine, and let auto-select pick the fastest server without flapping between similar ones.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Built to look at</h2>
+    <p class="lead">Menu bar controls, light and dark mode, keyboard shortcuts and VoiceOver labels.</p>
+    <div class="two">
+      <figure><img src="img/proxy-chain.png" width="1800" height="1207" loading="lazy" alt="Keyway with a three-hop chain selected: OpenVPN, then VLESS Reality, then WireGuard"><figcaption>A three-hop proxy chain.</figcaption></figure>
+      <figure><img src="img/engines.png" width="1200" height="1054" loading="lazy" alt="Keyway engines screen listing Xray-core, sing-box, V2Ray core and Mihomo"><figcaption>Engines, downloaded and verified for you.</figcaption></figure>
+      <figure><img src="img/dns.png" width="1200" height="1054" loading="lazy" alt="Keyway DNS settings with secure DNS and FakeIP"><figcaption>DNS, FakeIP and routing.</figcaption></figure>
+      <figure><img src="img/menu-bar.png" width="392" height="700" loading="lazy" alt="Keyway menu bar popover on macOS" style="max-width:260px"><figcaption>Connect from the menu bar.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <h2>Engines and protocols</h2>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Engine</th><th>Protocols</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Xray-core</strong></td><td>VLESS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP, WireGuard, Hysteria2</td></tr>
+        <tr><td><strong>sing-box</strong></td><td>Hysteria and Hysteria2, TUIC, AnyTLS, ShadowTLS, NaiveProxy, WireGuard, OpenVPN, plus the Xray protocols</td></tr>
+        <tr><td><strong>V2Ray core</strong> (optional)</td><td>VLESS over TLS, VMess, Trojan, Shadowsocks, SOCKS5, HTTP</td></tr>
+        <tr><td><strong>Mihomo</strong> (optional)</td><td>VLESS, VMess, Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS, WireGuard, SOCKS5, HTTP</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>Install</h2>
+    <p class="lead">With Homebrew:</p>
+    <pre><code>brew tap arminsameti/tap
+brew trust arminsameti/tap
+brew install --cask keyway</code></pre>
+    <p>Or download the <code>.dmg</code> from the <a href="https://github.com/arminsameti/Keyway/releases/latest">latest release</a>, drag Keyway to Applications and open it. It needs macOS 14 Sonoma or later.</p>
+    <p class="meta">The builds are not notarized yet. If a manual download is refused, right-click the app and choose Open, or run <code>xattr -dr com.apple.quarantine /Applications/Keyway.app</code> once. Homebrew does this for you.</p>
+  </div>
+</section>
+
+<section id="faq" class="alt">
+  <div class="wrap">
+    <h2>FAQ</h2>
+    <details><summary>Is Keyway a V2Ray or Xray client for Mac?</summary><p>Yes. It imports V2Ray and Xray links and subscriptions, and runs Xray-core, with V2Ray core as an option.</p></details>
+    <details><summary>Does it work on Apple silicon and Intel Macs?</summary><p>Yes. The release is a universal build for macOS 14 or later.</p></details>
+    <details><summary>Does it include a system-wide VPN mode?</summary><p>Yes, TUN mode. It needs administrator approval and routes every packet, IPv4 and IPv6, through the proxy.</p></details>
+    <details><summary>Is Keyway a proxy or VPN service?</summary><p>No. It is a client. You bring your own servers or subscription.</p></details>
+    <details><summary>Why does macOS warn me when I open it?</summary><p>The builds are not notarized yet. See the install section for the one-time fix.</p></details>
+    <details><summary>Is it safe?</summary><p>The source is public. Engine downloads come only from official releases and are verified before install, and the local API only accepts requests carrying a per-launch token.</p></details>
+    <details><summary>What is missing?</summary><p>A kill switch, Windows and Linux support, and signed or notarized builds.</p></details>
+  </div>
+</section>
+
+<div class="wrap">
+  <footer>
+    <a href="https://github.com/arminsameti/Keyway">GitHub</a>
+    <a href="https://github.com/arminsameti/Keyway/releases">Releases</a>
+    <a href="https://github.com/arminsameti/Keyway/blob/master/docs/GUIDE.md">User guide</a>
+    <a href="https://github.com/arminsameti/Keyway/blob/master/CONTRIBUTING.md">Contribute</a>
+    <a href="https://github.com/arminsameti/Keyway/blob/master/LICENSE">MIT License</a>
+  </footer>
+</div>
+</body>
+</html>
