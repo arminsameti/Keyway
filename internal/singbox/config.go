@@ -204,7 +204,7 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 		return nil, err
 	}
 	if seg.TUN != nil {
-		rules = addTUN(cfg, seg.TUN, rules)
+		rules = addTUN(cfg, seg.TUN, rules, exitLacksIPv6(exit))
 	}
 	cfg.Route.Rules, cfg.Route.RuleSet = rules, sets
 	for _, r := range rules {
@@ -235,30 +235,48 @@ const (
 // the system never routes v6 into the tunnel, so IPv6 traffic (which browsers
 // strongly prefer for WebRTC/STUN) would bypass the proxy and leak the real
 // address.
-func addTUN(cfg *Config, t *profile.TUNOptions, rules []Rule) []Rule {
+func addTUN(cfg *Config, t *profile.TUNOptions, rules []Rule, rejectIPv6 bool) []Rule {
 	cfg.Inbounds = append(cfg.Inbounds, Inbound{Type: "tun", Tag: "tun-in",
 		Address:     []string{tunIPv4, tunIPv6},
 		AutoRoute:   true,
 		StrictRoute: t.Strict, Stack: orDefault(t.Stack, "mixed"), MTU: t.MTU})
 	cfg.Route.AutoDetectInterface = true
 	cfg.Route.FindProcess = true
-	var head []Rule
-	for _, r := range rules { // keep sniff first: later rules match on the sniffed domain
+	var sniff, rest []Rule
+	for _, r := range rules { // sniff stays ahead of the rules that match on the sniffed domain
 		if r.Action == "sniff" {
-			head = append(head, r)
+			sniff = append(sniff, r)
+		} else {
+			rest = append(rest, r)
 		}
 	}
 	// Plain DNS is recognised by sniffing, which the user may have turned off;
 	// the port catches it either way, so the DNS settings always apply.
-	head = append(head, Rule{Protocol: "dns", Action: "hijack-dns"}, Rule{Port: []int{53}, Action: "hijack-dns"})
+	hijackDNS := Rule{Protocol: "dns", Action: "hijack-dns"}
+	hijackPort := Rule{Port: []int{53}, Action: "hijack-dns"}
+	var exclude []Rule
 	if len(t.ExcludePaths) > 0 {
-		head = append(head, Rule{ProcessPath: t.ExcludePaths, Outbound: "direct"})
+		exclude = []Rule{{ProcessPath: t.ExcludePaths, Outbound: "direct"}}
 	}
-	var rest []Rule
-	for _, r := range rules {
-		if r.Action != "sniff" {
-			rest = append(rest, r)
-		}
+	var head []Rule
+	if rejectIPv6 {
+		// The exit has no IPv6, but apps can still end up with IPv6 addresses (macOS
+		// sends some DNS around the tunnel). The TUN accepts a TCP handshake before
+		// it routes the connection, so such a connection would "succeed" and then be
+		// reset, and the app could not fall back to IPv4. Refusing it before the
+		// handshake makes connect() fail and the app falls back at once. sing-box
+		// can only decide that early while no rule ahead of the rejection needs the
+		// connection's data, and a sniff rule does: so these go first, and the
+		// user's own rules after. Private IPv6 (the local network) stays direct.
+		head = append(head, hijackPort)
+		head = append(head, exclude...)
+		head = append(head, Rule{IPVersion: 6, IPIsPrivate: true, Outbound: "direct"}, Rule{IPVersion: 6, Action: "reject"})
+		head = append(head, sniff...)
+		head = append(head, hijackDNS)
+	} else {
+		head = append(head, sniff...)
+		head = append(head, hijackDNS, hijackPort)
+		head = append(head, exclude...)
 	}
 	return append(head, rest...)
 }

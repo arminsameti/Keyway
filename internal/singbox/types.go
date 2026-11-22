@@ -210,6 +210,7 @@ type Rule struct {
 	DomainSuffix  []string `json:"domain_suffix,omitempty"`
 	DomainKeyword []string `json:"domain_keyword,omitempty"`
 	DomainRegex   []string `json:"domain_regex,omitempty"`
+	IPVersion     int      `json:"ip_version,omitempty"`
 	IPCIDR        []string `json:"ip_cidr,omitempty"`
 	IPIsPrivate   bool     `json:"ip_is_private,omitempty"`
 	Port          []int    `json:"port,omitempty"`
