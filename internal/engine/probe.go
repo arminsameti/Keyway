@@ -165,3 +165,36 @@ func URLTest(ctx context.Context, socksAddr, target string, timeout time.Duratio
 	}
 	return time.Since(start).Milliseconds(), nil
 }
+
+// WaitUsable retries a request through the SOCKS5 proxy at socksAddr until one
+// goes through or timeout passes. An OpenVPN endpoint refuses every request
+// instantly until its tunnel is up (a second hop only starts once the first is
+// established), so a single attempt would report a healthy chain as failed.
+func WaitUsable(ctx context.Context, socksAddr string, timeout time.Duration) error {
+	const (
+		attemptCap = 8 * time.Second
+		pause      = 400 * time.Millisecond
+	)
+	deadline := time.Now().Add(timeout)
+	for {
+		attempt := time.Until(deadline)
+		if attempt > attemptCap {
+			attempt = attemptCap
+		}
+		_, err := URLTest(ctx, socksAddr, "", attempt)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if time.Until(deadline) <= pause {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(pause):
+		}
+	}
+}
