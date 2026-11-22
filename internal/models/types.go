@@ -163,7 +163,7 @@ func DefaultSettings() Settings {
 		EngineUpdateCheck:   "weekly",
 		LatencyMethod:       "real",
 		AppUpdateCheck:      "daily",
-		TUN:                 TUNSettings{Privilege: "prompt", Stack: "mixed", MTU: 9000},
+		TUN:                 TUNSettings{Privilege: "helper", Stack: "mixed", MTU: 9000},
 	}
 }
 

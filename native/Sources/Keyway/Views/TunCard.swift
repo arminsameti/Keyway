@@ -14,8 +14,8 @@ struct TunCard: View {
             }
             CardRow(label: "Administrator rights") {
                 Picker("Administrator rights", selection: settingBinding(model, \.tun.privilege)) {
-                    Text("Ask for my password every time").tag("prompt")
-                    Text("Allow once").tag("helper")
+                    Text("Ask me every time").tag("prompt")
+                    Text("Allow once, no more prompts").tag("helper")
                 }
                 .labelsHidden().fixedSize()
             }
@@ -38,7 +38,7 @@ struct TunCard: View {
     @ViewBuilder
     private var helperRow: some View {
         let h = model.tunHelper
-        CardRow(label: h.installed ? "Allowed once" + (h.pinnedVersion.map { " · sing-box \($0)" } ?? "") : "Not set up yet") {
+        CardRow(label: h.installed ? "Allowed once" + (h.pinnedVersion.map { " · sing-box \($0)" } ?? "") : "Not set up yet (happens on your next connect)") {
             if !h.available {
                 Text("The helper is missing from this build").foregroundStyle(Palette.warn)
             } else if h.installed {
@@ -53,9 +53,9 @@ struct TunCard: View {
     private var footnote: String {
         var t = "Strict routing also stops apps from bypassing the tunnel over another network interface. "
         if model.settings.tun.privilege == "helper" {
-            t += "“Allow once” stores a copy of the helper and sing-box where only administrators can change them, and lets this account start them without a password. Remove it here at any time. While it is allowed, any program running as you can start a TUN session."
+            t += "“Allow once” stores a copy of the helper and sing-box where only administrators can change them, and lets this account start them without asking again. You approve once, on your next connect. Remove it here at any time. While it is allowed, any program running as you can start a TUN session."
         } else {
-            t += "macOS asks for your password each time you connect, and the tunnel stops when you disconnect or quit the app."
+            t += "macOS asks you to approve each time you connect, with Touch ID if sudo is set up for it on this Mac, otherwise with your password. The tunnel stops when you disconnect or quit the app."
         }
         return t
     }

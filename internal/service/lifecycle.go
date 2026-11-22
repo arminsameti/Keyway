@@ -209,7 +209,7 @@ func (s *Service) startAll(ctx context.Context, pl *connPlan, segs []profile.Seg
 	}
 	l := pl.steps[last].Engine.Launch(pl.installs[last], paths[last])
 	if d.Settings.TUN.Enabled {
-		el, err := s.elevation(d, pl.installs[last], paths[last])
+		el, err := s.elevation(ctx, d, pl.installs[last], paths[last])
 		if err != nil {
 			return err
 		}
