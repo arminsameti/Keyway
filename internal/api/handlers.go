@@ -93,6 +93,23 @@ func (s *Server) deleteNodes(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]any{"removed": n})
 }
 
+func (s *Server) moveNodes(w http.ResponseWriter, r *http.Request) {
+	var b struct {
+		IDs    []string `json:"ids"`
+		Before string   `json:"before"`
+		After  string   `json:"after"`
+	}
+	if err := decode(r, &b, false); err != nil {
+		failErr(w, err, http.StatusBadRequest)
+		return
+	}
+	if err := s.svc.MoveNodes(b.IDs, b.Before, b.After); err != nil {
+		failErr(w, err, statusFor(err, http.StatusInternalServerError))
+		return
+	}
+	ok(w, map[string]any{})
+}
+
 func (s *Server) setActive(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		ID string `json:"id"`
@@ -277,15 +294,16 @@ func (s *Server) disconnect(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) latency(w http.ResponseWriter, r *http.Request) {
 	var b struct {
-		Mode string `json:"mode"`
+		Mode string   `json:"mode"`
+		IDs  []string `json:"ids"` // only these servers; empty = all
 	}
 	if err := decode(r, &b, true); err != nil {
 		failErr(w, err, http.StatusBadRequest)
 		return
 	}
-	lat, mode, err := s.svc.TestLatency(r.Context(), b.Mode)
+	lat, mode, err := s.svc.TestLatency(r.Context(), b.Mode, b.IDs...)
 	if err != nil {
-		failErr(w, err, http.StatusInternalServerError)
+		failErr(w, err, statusFor(err, http.StatusInternalServerError))
 		return
 	}
 	ok(w, map[string]any{"latency": lat, "mode": mode})

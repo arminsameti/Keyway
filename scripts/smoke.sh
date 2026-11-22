@@ -58,6 +58,20 @@ BADLINE='{"profile":{"protocol":"tor","tor":{"bridges":"custom","lines":["obfs4 
 NEWSET="$(echo "$SET" | sed 's/"torEnabled":false/"torEnabled":false/')"
 [ "$(code -X POST "${J[@]}" -d "$NEWSET" "$B/api/settings")" = 200 ] || fail "disable Tor"
 curl -s -H "X-Keyway-Token: $TOKEN" "$B/api/nodes" | grep -q '"protocol":"tor"' && fail "Tor nodes hidden while off"
+# Rearranging the list by hand, and testing only some servers.
+names() { curl -s -H "X-Keyway-Token: $TOKEN" "$B/api/nodes" | grep -o '"id":"[0-9a-f]*"' | cut -d'"' -f4 | tr '\n' ' '; }
+BEFORE="$(names)"
+LAST="${BEFORE% }"; LAST="${LAST##* }"
+FIRST="${BEFORE%% *}"
+MOVE="{\"ids\":[\"$LAST\"],\"before\":\"$FIRST\"}"
+[ "$(code -X POST "${J[@]}" -d "$MOVE" "$B/api/nodes/move")" = 200 ] || fail "move a server to the top"
+[ "$(names | cut -d' ' -f1)" = "$LAST" ] || fail "the moved server is first: $(names)"
+BADMOVE="{\"ids\":[\"$LAST\"],\"before\":\"$LAST\"}"
+[ "$(code -X POST "${J[@]}" -d "$BADMOVE" "$B/api/nodes/move")" = 400 ] || fail "a server cannot move next to itself"
+[ "$(code -X POST "${J[@]}" -d '{"ids":["nope"],"after":"nope"}' "$B/api/nodes/move")" = 400 ] || fail "unknown servers are refused"
+ONLY="{\"mode\":\"tcp\",\"ids\":[\"$FIRST\"]}"
+[ "$(code -X POST "${J[@]}" -d "$ONLY" "$B/api/latency")" = 200 ] || fail "test only one server"
+[ "$(code -X POST "${J[@]}" -d '{"mode":"tcp","ids":["nope"]}' "$B/api/latency")" = 400 ] || fail "unknown server in a latency test is refused"
 kill -TERM $PID; wait $PID || true
 [ ! -e "$DIR/api-token" ] || fail "token file not removed on exit"
 echo "smoke OK"

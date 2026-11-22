@@ -130,6 +130,7 @@ struct ServersView: View {
 
     var body: some View {
         @Bindable var model = model
+        let picked = model.nodes.map(\.id).filter(model.selectedNodeIDs.contains)
         VStack(spacing: 16) {
             ConnectionCard()
             ProtocolChips()
@@ -141,14 +142,19 @@ struct ServersView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Menu {
+                    if picked.count > 1 {
+                        Button("Test \(picked.count) Selected") { model.testLatency(ids: picked) }
+                        Button("TCP quick test, selected") { model.testLatency("tcp", ids: picked) }
+                        Divider()
+                    }
                     Button("TCP quick test") { model.testLatency("tcp") }
                     Button("Real test") { model.testLatency("real") }
                 } label: {
                     Label(model.testing ? "Testing…" : "Test Latency", systemImage: "bolt")
                 } primaryAction: {
-                    model.testLatency()
+                    model.testLatency(ids: picked.count > 1 ? picked : [])
                 }
-                .help("Test latency (⌘T)")
+                .help("Test latency (⌘T). With several servers selected, only those are tested.")
                 .disabled(model.testing || model.nodes.isEmpty)
 
                 Menu {
@@ -312,8 +318,13 @@ struct ProtocolChips: View {
 struct ServerTable: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
-    @State private var sortOrder = [KeyPathComparator(\Node.latencySort)]
+    /// Empty = the order the user arranged by dragging; kept across launches.
+    @State private var sortOrder: [KeyPathComparator<Node>] =
+        UserDefaults.standard.bool(forKey: Self.manualOrderKey) ? [] : [KeyPathComparator(\Node.latencySort)]
     @State private var pendingDelete: [Node.ID] = []
+    @State private var newGroupIDs: [Node.ID] = []
+    @State private var newGroupName = ""
+    private static let manualOrderKey = "serverListManualOrder"
 
     var body: some View {
         @Bindable var model = model
@@ -371,7 +382,12 @@ struct ServerTable: View {
         } rows: {
             ForEach(groups) { g in
                 Section {
-                    ForEach(g.nodes) { TableRow($0) }
+                    ForEach(g.nodes) { n in
+                        TableRow(n).itemProvider { dragItem(n, in: groups) }
+                    }
+                    .dropDestination(for: String.self) { offset, items in
+                        drop(items, into: g, at: offset)
+                    }
                 } header: {
                     HStack(spacing: 8) {
                         Text(g.title).font(.system(size: 12, weight: .bold))
@@ -382,10 +398,15 @@ struct ServerTable: View {
         }
         .contextMenu(forSelectionType: Node.ID.self) { ids in
             if ids.count > 1 {
+                Button("Test \(ids.count) Servers") { model.testLatency(ids: ordered(ids, in: groups)) }
+                    .disabled(model.testing)
+                groupMenu(ids, in: groups)
+                Divider()
                 Button("Delete \(ids.count) Servers…", role: .destructive) { pendingDelete = Array(ids) }
             } else if let id = ids.first, let n = model.nodes.first(where: { $0.id == id }) {
                 Button("Connect") { model.connect(id) }
-                Button("Test") { model.testLatency() }
+                Button("Test") { model.testLatency(ids: [id]) }.disabled(model.testing)
+                groupMenu(ids, in: groups)
                 Divider()
                 Button("Copy Link") { model.copyLink(n) }.disabled(!n.hasLink)
                 Button("Show QR") { model.qrNode = n }.disabled(!n.hasLink)
@@ -396,6 +417,21 @@ struct ServerTable: View {
             }
         } primaryAction: { ids in
             if ids.count == 1, let id = ids.first { model.connect(id) } // double-click / Return
+        }
+        .onChange(of: sortOrder.isEmpty) { _, manual in
+            UserDefaults.standard.set(manual, forKey: Self.manualOrderKey)
+        }
+        .alert("New Group", isPresented: Binding(
+            get: { !newGroupIDs.isEmpty }, set: { if !$0 { newGroupIDs = [] } })) {
+            TextField("Name", text: $newGroupName)
+            Button("Create") {
+                let name = newGroupName.trimmingCharacters(in: .whitespaces)
+                if !name.isEmpty { model.newGroup(named: name, with: newGroupIDs) }
+                newGroupIDs = []
+            }
+            Button("Cancel", role: .cancel) { newGroupIDs = [] }
+        } message: {
+            Text("A group made from \(newGroupIDs.count) \(newGroupIDs.count == 1 ? "server" : "servers"). You pick which one it uses.")
         }
         .onDeleteCommand {
             let ids = Array(model.selectedNodeIDs)
@@ -427,6 +463,36 @@ struct ServerTable: View {
     }
 
     private func isActive(_ n: Node) -> Bool { model.connected && n.id == model.status.activeNodeId }
+
+    /// What a drag of `n` carries: the whole selection when `n` is part of it, else just `n`.
+    private func dragItem(_ n: Node, in groups: [ServerGroup]) -> NSItemProvider {
+        let ids = model.selectedNodeIDs.contains(n.id) ? ordered(model.selectedNodeIDs, in: groups) : [n.id]
+        return NSItemProvider(object: Reorder.dragPayload(ids) as NSString)
+    }
+
+    /// `ids` in the order they are shown.
+    private func ordered(_ ids: Set<Node.ID>, in groups: [ServerGroup]) -> [Node.ID] {
+        groups.flatMap { $0.nodes.map(\.id) }.filter(ids.contains)
+    }
+
+    private func drop(_ items: [String], into g: ServerGroup, at offset: Int) {
+        let moving = items.flatMap(Reorder.ids(fromDragPayload:))
+        guard let p = Reorder.placement(displayed: g.nodes.map(\.id), moving: moving, insertAt: offset) else { return }
+        sortOrder = [] // the list now shows the order just made
+        model.moveNodes(p)
+    }
+
+    @ViewBuilder
+    private func groupMenu(_ ids: Set<Node.ID>, in groups: [ServerGroup]) -> some View {
+        let picked = ordered(ids, in: groups)
+        Menu("Add to Group") {
+            ForEach(model.editableGroups) { g in
+                Button(g.name) { model.add(picked, to: g) }
+            }
+            if !model.editableGroups.isEmpty { Divider() }
+            Button("New Group…") { newGroupName = ""; newGroupIDs = picked }
+        }
+    }
 }
 
 // MARK: inspector

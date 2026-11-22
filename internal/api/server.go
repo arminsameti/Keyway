@@ -66,6 +66,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/jobs/{id}", s.getJob)
 	mux.HandleFunc("DELETE /api/nodes/{id}", s.deleteNode)
 	mux.HandleFunc("POST /api/nodes/delete", s.deleteNodes)
+	mux.HandleFunc("POST /api/nodes/move", s.moveNodes)
 	mux.HandleFunc("GET /api/traffic", s.traffic)
 	mux.HandleFunc("GET /api/tun/helper", s.tunHelper)
 	mux.HandleFunc("POST /api/tun/helper", s.setTunHelper)

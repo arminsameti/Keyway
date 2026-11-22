@@ -231,15 +231,20 @@ final class AppModel {
         let rows = filteredNodes
         var out: [ServerGroup] = []
         for sub in subscriptions {
-            let g = rows.filter { $0.source == sub.id }.sorted(using: order)
+            let g = Self.sorted(rows.filter { $0.source == sub.id }, using: order)
             if g.isEmpty { continue }
             let meta = [Format.updated(sub.updatedAt), Format.formatName(sub.format)].compactMap { $0 }.joined(separator: " · ")
             out.append(ServerGroup(id: sub.id, title: sub.name, meta: meta, nodes: g))
         }
         let known = Set(subscriptions.map(\.id))
-        let manual = rows.filter { ($0.source ?? "").isEmpty || !known.contains($0.source ?? "") }.sorted(using: order)
+        let manual = Self.sorted(rows.filter { ($0.source ?? "").isEmpty || !known.contains($0.source ?? "") }, using: order)
         if !manual.isEmpty { out.append(ServerGroup(id: "manual", title: "Added Manually", meta: "", nodes: manual)) }
         return out
+    }
+
+    /// No sort order means the list order the user arranged by dragging.
+    private static func sorted(_ rows: [Node], using order: [KeyPathComparator<Node>]) -> [Node] {
+        order.isEmpty ? rows : rows.sorted(using: order)
     }
 
     func source(of n: Node) -> String {
@@ -309,14 +314,32 @@ final class AppModel {
         }
     }
 
-    func testLatency(_ mode: String? = nil) {
+    /// Measures every server, or only `ids` (the selection) when given.
+    func testLatency(_ mode: String? = nil, ids: [Node.ID] = []) {
         let m = mode ?? (settings.latencyMethod == "tcp" ? "tcp" : "real")
         lastTestMode = m
         testing = true
         perform { [weak self] c in
             defer { Task { @MainActor in self?.testing = false } }
-            _ = try await c.latency(mode: m)
+            _ = try await c.latency(mode: m, ids: ids)
         }
+    }
+
+    // MARK: arranging
+
+    func moveNodes(_ p: Reorder.Placement) { perform { try await $0.moveNodes(p) } }
+
+    /// Groups the user can add servers to: made by hand, not imported or following a subscription.
+    var editableGroups: [ProxyGroup] { groups.filter { !$0.imported && !$0.followsSubscription } }
+
+    func add(_ ids: [Node.ID], to group: ProxyGroup) {
+        let members = Reorder.members(group.members, adding: ids)
+        guard members != group.members else { return }
+        updateGroup(group.id, GroupInput(name: group.name, strategy: group.strategy, members: members))
+    }
+
+    func newGroup(named name: String, with ids: [Node.ID]) {
+        createGroup(GroupInput(name: name, strategy: "select", members: ids))
     }
 
     func pickFastest() {
