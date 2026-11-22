@@ -54,3 +54,24 @@ func TestDNSStaysIPv4OnAnExitWithoutIPv6(t *testing.T) {
 		})
 	}
 }
+
+// DNS hijacking decides which queries sing-box's own resolver answers, so every
+// DNS setting (secure DNS, FakeIP, IPv4-only answers) depends on it. Matching on
+// the sniffed protocol alone breaks it whenever sniffing is off: the queries
+// then go straight to whatever resolver the system uses, answers and all.
+func TestTUNHijacksDNSWithoutSniffing(t *testing.T) {
+	seg := profile.Single(goldenProfile())
+	seg.TUN = &profile.TUNOptions{Stack: "mixed", MTU: 9000}
+	s := models.DefaultSettings()
+	s.TUN.Enabled, s.Sniffing = true, false
+	cfg, err := BuildConfig(seg, s, ruleSetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range cfg.Route.Rules {
+		if r.Action == "hijack-dns" && len(r.Port) == 1 && r.Port[0] == 53 {
+			return
+		}
+	}
+	t.Fatalf("with sniffing off, DNS on port 53 is not hijacked: %+v", cfg.Route.Rules)
+}

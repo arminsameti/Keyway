@@ -248,7 +248,9 @@ func addTUN(cfg *Config, t *profile.TUNOptions, rules []Rule) []Rule {
 			head = append(head, r)
 		}
 	}
-	head = append(head, Rule{Protocol: "dns", Action: "hijack-dns"})
+	// Plain DNS is recognised by sniffing, which the user may have turned off;
+	// the port catches it either way, so the DNS settings always apply.
+	head = append(head, Rule{Protocol: "dns", Action: "hijack-dns"}, Rule{Port: []int{53}, Action: "hijack-dns"})
 	if len(t.ExcludePaths) > 0 {
 		head = append(head, Rule{ProcessPath: t.ExcludePaths, Outbound: "direct"})
 	}
