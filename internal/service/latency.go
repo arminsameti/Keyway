@@ -176,10 +176,27 @@ func withoutTor(d models.AppData, nodes []models.Node) []models.Node {
 	return out
 }
 
-// TestLatency measures every node and stores the results.
-func (s *Service) TestLatency(ctx context.Context, mode string) (map[string]int64, string, error) {
+// TestLatency measures every node, or only the ones in ids, and stores the
+// results.
+func (s *Service) TestLatency(ctx context.Context, mode string, ids ...string) (map[string]int64, string, error) {
 	d := s.store.Get()
 	nodes := d.Nodes
+	if len(ids) > 0 {
+		want := make(map[string]bool, len(ids))
+		for _, id := range ids {
+			want[id] = true
+		}
+		nodes = nodes[:0:0]
+		for _, n := range d.Nodes {
+			if want[n.ID] {
+				nodes = append(nodes, n)
+				delete(want, n.ID)
+			}
+		}
+		if len(want) > 0 {
+			return nil, mode, &models.ValidationError{Msg: "some of the selected servers are no longer in your list"}
+		}
+	}
 	if !d.Settings.TorEnabled {
 		nodes = withoutTor(d, nodes)
 	}

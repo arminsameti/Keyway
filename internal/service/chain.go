@@ -250,6 +250,14 @@ func (s *Service) probe(ctx context.Context, pl *connPlan) (int64, error) {
 		}
 	}
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(finalPort))
+	if n := openVPNHops(pl.hops); n > 0 {
+		// OpenVPN refuses requests until its tunnel is established, which takes
+		// seconds per hop: wait for it, then time a request on the warm tunnel.
+		if err := engine.WaitUsable(ctx, addr, openVPNReadyTimeout(n)); err != nil {
+			return 0, err
+		}
+		return engine.URLTest(ctx, addr, "", chainProbeTimeout(len(pl.hops)))
+	}
 	if len(pl.hops) == 1 {
 		return engine.URLTest(ctx, addr, "", timeoutSingle)
 	}
@@ -265,6 +273,23 @@ func (s *Service) probe(ctx context.Context, pl *connPlan) (int64, error) {
 		return 0, err
 	}
 	return engine.URLTest(ctx, addr, "", timeout)
+}
+
+// openVPNHops counts the OpenVPN hops of a chain.
+func openVPNHops(hops []profile.Profile) int {
+	n := 0
+	for _, h := range hops {
+		if h.Protocol == profile.OpenVPN {
+			n++
+		}
+	}
+	return n
+}
+
+// openVPNReadyTimeout is how long to wait for the tunnels of n OpenVPN hops:
+// each handshake takes a few seconds, and a slow server several times that.
+func openVPNReadyTimeout(n int) time.Duration {
+	return 15*time.Second + time.Duration(n)*10*time.Second
 }
 
 // torProbeTimeout is the budget of a request through Tor once it has bootstrapped.

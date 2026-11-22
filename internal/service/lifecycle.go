@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"keyway/internal/engine"
@@ -126,6 +128,7 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 		s.dropSysProxy()
 		return ConnectResult{}, err
 	}
+	s.waitOpenVPN(ctx, hops, d.Settings)
 	s.startTraffic(trafficSourceFor(final, pl.finalInstall(), stats))
 	s.setCurrent(runInfo{NodeID: node.ID, Engine: final, Version: pl.finalInstall().Version, Label: engine.EngineNames(pl.steps), TUN: d.Settings.TUN.Enabled})
 
@@ -145,6 +148,26 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 	}
 	s.log.Info("connected", "node", node.Name, "hops", len(hops), "engines", engine.EngineNames(pl.steps))
 	return res, nil
+}
+
+// waitOpenVPN holds back "connected" until the OpenVPN tunnels of the plan are
+// up. Until then every request through the proxy is refused instantly, and a
+// browser that starts using the new system proxy would show "connection
+// refused". It is best effort: a server that never comes up is logged, not
+// turned into a failed connect, since a retrying tunnel may still recover.
+func (s *Service) waitOpenVPN(ctx context.Context, hops []profile.Profile, st models.Settings) {
+	n := openVPNHops(hops)
+	if n == 0 {
+		return
+	}
+	socks, _, err := proxyPorts(st)
+	if err != nil {
+		return // no credential-free SOCKS inbound to test through
+	}
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(socks))
+	if err := engine.WaitUsable(ctx, addr, openVPNReadyTimeout(n)); err != nil && ctx.Err() == nil {
+		s.log.Warn("the OpenVPN tunnel is not carrying traffic yet", "err", err)
+	}
 }
 
 // segmentConfigPath is where a segment's config is written: the last one (the
