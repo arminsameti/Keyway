@@ -59,7 +59,9 @@ func tunOptions(t models.TUNSettings, pl *connPlan) *profile.TUNOptions {
 }
 
 // elevation builds the command that runs the last segment's sing-box as root.
-func (s *Service) elevation(d models.AppData, in engine.Install, cfgPath string) (*engine.Elevation, error) {
+// When one-time authorization is chosen but not set up yet, this is where it
+// gets set up: the user authorizes once, on this first connect, and never again.
+func (s *Service) elevation(ctx context.Context, d models.AppData, in engine.Install, cfgPath string) (*engine.Elevation, error) {
 	helper, err := helperBinary()
 	if err != nil {
 		return nil, err
@@ -70,25 +72,74 @@ func (s *Service) elevation(d models.AppData, in engine.Install, cfgPath string)
 	el := &engine.Elevation{StopFile: stop, ReadyFile: ready, LogFile: logf}
 	if d.Settings.TUN.Privilege == "helper" {
 		if !privileged.Installed() {
-			return nil, ErrTUNHelperMissing
+			s.log.Info("setting up one-time authorization for TUN")
+			if _, err := s.SetTUNHelper(ctx, true); err != nil {
+				return nil, err
+			}
+			if !privileged.Installed() {
+				return nil, ErrTUNHelperMissing
+			}
 		}
 		el.Command = append([]string{"/usr/bin/sudo", "-n", privileged.HelperPath, "run-pinned"}, common...)
 		return el, nil
 	}
-	cmd := shellJoin(append([]string{helper, "run-copy", "--bin", in.Bin}, common...))
-	el.Command = adminCommand(cmd)
+	el.Command, el.Fallback = adminCommand(append([]string{helper, "run-copy", "--bin", in.Bin}, common...),
+		"Keyway needs administrator rights to capture all traffic (TUN mode).")
 	return el, nil
 }
 
-// adminCommand is how a shell command gets administrator rights: the system's
-// own password dialog. Tests replace it.
-var adminCommand = func(shell string) []string { return []string{"/usr/bin/osascript", "-e", adminScript(shell)} }
+// runAdmin runs a command with administrator rights. A fingerprint that sudo
+// cannot take falls back to the password dialog.
+func runAdmin(ctx context.Context, args []string, why string) ([]byte, error) {
+	primary, fallback := adminCommand(args, why)
+	out, err := exec.CommandContext(ctx, primary[0], primary[1:]...).CombinedOutput()
+	if err != nil && len(fallback) > 0 && engine.SudoAuthFailed(string(out)) {
+		out, err = exec.CommandContext(ctx, fallback[0], fallback[1:]...).CombinedOutput()
+	}
+	return out, err
+}
+
+// adminCommand is how a command gets administrator rights, and what to try
+// instead if that does not work. With Touch ID set up for sudo, sudo shows the
+// system's fingerprint prompt (it has no terminal for a password, so the
+// password dialog is the fallback). Otherwise the system's password dialog,
+// which says why it asks. Tests replace it.
+var adminCommand = func(args []string, why string) (primary, fallback []string) {
+	return adminCommandFor(touchIDForSudo(os.ReadFile), args, why)
+}
+
+func adminCommandFor(touchID bool, args []string, why string) (primary, fallback []string) {
+	dialog := []string{"/usr/bin/osascript", "-e", adminScript(shellJoin(args), why)}
+	if touchID {
+		return append([]string{"/usr/bin/sudo", "--"}, args...), dialog
+	}
+	return dialog, nil
+}
+
+// touchIDForSudo reports whether sudo accepts a fingerprint: the user turned on
+// pam_tid for it, in /etc/pam.d/sudo_local (which survives macOS updates) or
+// the older way, in /etc/pam.d/sudo.
+func touchIDForSudo(read func(string) ([]byte, error)) bool {
+	for _, f := range []string{"/etc/pam.d/sudo_local", "/etc/pam.d/sudo"} {
+		b, err := read(f)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "#") && strings.Contains(line, "pam_tid.so") {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // adminScript asks macOS to run a shell command with administrator rights; the
-// system shows its own password dialog.
-func adminScript(shell string) string {
-	esc := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(shell)
-	return `do shell script "` + esc + `" with administrator privileges`
+// system shows its own password dialog, headed by why.
+func adminScript(shell, why string) string {
+	esc := strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+	return `do shell script "` + esc.Replace(shell) + `" with prompt "` + esc.Replace(why) + `" with administrator privileges`
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
@@ -147,8 +198,10 @@ func (s *Service) SetTUNHelper(ctx context.Context, install bool) (TUNHelper, er
 	if err != nil {
 		return TUNHelper{}, err
 	}
-	var shell string
+	var args []string
+	why := "Keyway needs administrator rights to remove the one-time authorization for TUN mode."
 	if install {
+		why = "Keyway needs administrator rights once, so TUN mode does not ask again."
 		d := s.store.Get()
 		sl, ok := s.slot(engine.NameSingBox)
 		if !ok {
@@ -162,14 +215,13 @@ func (s *Service) SetTUNHelper(ctx context.Context, install bool) (TUNHelper, er
 		if err != nil {
 			return TUNHelper{}, err
 		}
-		shell = shellJoin([]string{helper, "install", "--bin", bin, "--user", u.Username})
+		args = []string{helper, "install", "--bin", bin, "--user", u.Username}
 	} else {
-		shell = shellJoin([]string{helper, "uninstall"})
+		args = []string{helper, "uninstall"}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
-	cmd := adminCommand(shell)
-	out, err := exec.CommandContext(ctx, cmd[0], cmd[1:]...).CombinedOutput()
+	out, err := runAdmin(ctx, args, why)
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		if strings.Contains(msg, "User canceled") {

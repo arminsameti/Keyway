@@ -38,7 +38,11 @@ type StartOptions struct {
 // starts (sudo, or the system's password dialog); the helper it launches
 // reports through three files in the user's data directory.
 type Elevation struct {
-	Command   []string
+	Command []string
+	// Fallback runs instead when Command fails because sudo could not
+	// authenticate (Touch ID declined or unavailable: sudo has no terminal to
+	// ask for a password on). It is the password dialog.
+	Fallback  []string
 	StopFile  string // created to ask the helper to stop sing-box
 	ReadyFile string // created by the helper once sing-box has been running for a moment
 	LogFile   string // sing-box's output; read into the activity log
@@ -67,6 +71,10 @@ type process struct {
 	done     chan struct{}
 	started  time.Time
 	stopping atomic.Bool
+	// An elevated start that has a fallback is still starting until the helper
+	// reports ready; ending before that is the start failing, not a crash.
+	retryable bool
+	starting  atomic.Bool
 }
 
 // Runner supervises a single engine process (Xray or sing-box).
@@ -145,7 +153,7 @@ func (r *Runner) wait(p *process) {
 	if w != nil {
 		w.flush()
 	}
-	unexpected := !p.stopping.Load()
+	unexpected := !p.stopping.Load() && !(p.retryable && p.starting.Load())
 
 	r.mu.Lock()
 	if r.cur == p {
@@ -191,13 +199,15 @@ func (r *Runner) startElevated(opts StartOptions) error {
 	cmd := exec.Command(el.Command[0], el.Command[1:]...)
 	cmd.Env = os.Environ()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	w := &lineWriter{emit: r.emit}
+	var out attemptLog
+	w := &lineWriter{emit: func(l string) { r.emit(l); out.add(l) }}
 	cmd.Stdout, cmd.Stderr = w, w
 	if err := cmd.Start(); err != nil {
 		r.mu.Unlock()
 		return fmt.Errorf("start the privileged helper: %w", err)
 	}
-	p := &process{cmd: cmd, elev: el, done: make(chan struct{}), started: time.Now()}
+	p := &process{cmd: cmd, elev: el, done: make(chan struct{}), started: time.Now(), retryable: len(el.Fallback) > 0}
+	p.starting.Store(true)
 	r.cur = p
 	r.writePID(cmd.Process.Pid)
 	r.emit("waiting for administrator approval to start sing-box with a TUN interface")
@@ -212,17 +222,59 @@ func (r *Runner) startElevated(opts StartOptions) error {
 	for {
 		select {
 		case <-p.done:
+			if len(el.Fallback) > 0 && SudoAuthFailed(out.String()) {
+				r.emit("Touch ID did not authorize this; asking for your password instead")
+				next := *el
+				next.Command, next.Fallback = el.Fallback, nil
+				return r.startElevated(StartOptions{Elevate: &next})
+			}
 			return fmt.Errorf("could not start with administrator rights: %s", r.logs.tail(4))
 		case <-deadline:
 			_ = r.Stop()
 			return errors.New("timed out waiting for administrator approval")
 		case <-tick.C:
 			if _, err := os.Stat(el.ReadyFile); err == nil {
+				p.starting.Store(false)
 				r.emit("sing-box is running with administrator rights")
 				return nil
 			}
 		}
 	}
+}
+
+// attemptLog is the output of one launch attempt.
+type attemptLog struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (a *attemptLog) add(l string) {
+	a.mu.Lock()
+	a.b.WriteString(l)
+	a.b.WriteByte('\n')
+	a.mu.Unlock()
+}
+
+func (a *attemptLog) String() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.b.String()
+}
+
+// SudoAuthFailed reports whether output shows that sudo could not authenticate
+// the user, as opposed to the helper itself failing.
+func SudoAuthFailed(out string) bool {
+	for _, m := range []string{
+		"sudo: a terminal is required",
+		"sudo: a password is required",
+		"sudo: no tty present",
+		"incorrect password attempt",
+	} {
+		if strings.Contains(out, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // tailLog copies the elevated engine's log file into the activity log.
