@@ -36,6 +36,8 @@ type DNS struct {
 	Servers []DNSServer `json:"servers"`
 	Rules   []DNSRule   `json:"rules,omitempty"`
 	Final   string      `json:"final,omitempty"`
+	// Strategy limits the address families DNS answers with ("ipv4_only").
+	Strategy string `json:"strategy,omitempty"`
 }
 
 type DNSServer struct {

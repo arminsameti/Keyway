@@ -43,3 +43,5 @@ The engines differ, so Keyway checks before it picks one. Xray core and V2Ray co
 ## TUN mode and administrator rights
 
 TUN starts sing-box as root. By default macOS asks for your password every time you connect. In Settings › Proxy you can instead choose **Allow Once…**, which installs a root-owned helper and a sudoers rule so later connects need no password. While that is installed, any program running as you can start a TUN session, and removing it deletes the rule. The helper refuses configs that touch files, listen on non-loopback addresses or use remote rule sets.
+
+The tunnel carries IPv4 and IPv6. When the server you connect through has no IPv6 address (OpenVPN tunnels as commercial providers set them up, or a WireGuard profile with only an IPv4 address), Keyway makes DNS answer with IPv4 addresses only. Otherwise apps would try IPv6 addresses the server cannot carry and see connection resets on some sites.

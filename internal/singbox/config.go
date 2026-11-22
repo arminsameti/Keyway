@@ -173,6 +173,14 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 	var exit profile.Profile
 	if len(seg.Hops) > 0 {
 		exit = seg.Hops[len(seg.Hops)-1]
+		if exitLacksIPv6(exit) {
+			// The TUN carries IPv6, so apps that were offered AAAA records connect
+			// over IPv6, which such an exit rejects ("missing IPv6 local address"):
+			// a reset on every site the app does not retry over IPv4. Answer with
+			// IPv4 addresses only. (Server names are resolved the same way, so a
+			// server that is reachable only over IPv6 is not usable with these.)
+			cfg.DNS.Strategy = "ipv4_only"
+		}
 	}
 	if on, conc := muxFor(s, exit); on && muxCapable(exit) {
 		for i := range cfg.Outbounds {
@@ -505,6 +513,28 @@ func outbounds(p profile.Profile, tag, detour string) ([]Outbound, error) {
 		return nil, fmt.Errorf("%s is not supported by sing-box", profile.ProtocolName(p.Protocol))
 	}
 	return []Outbound{ob}, nil
+}
+
+// exitLacksIPv6 reports whether traffic leaving through this hop cannot use
+// IPv6. An OpenVPN tunnel only has the addresses its server pushes, which
+// commercial VPN servers limit to IPv4; a WireGuard endpoint has the local
+// addresses of its profile.
+func exitLacksIPv6(p profile.Profile) bool {
+	switch p.Protocol {
+	case profile.OpenVPN:
+		return true
+	case profile.WireGuard:
+		if p.WireGuard == nil {
+			return false
+		}
+		for _, a := range p.WireGuard.LocalAddress {
+			if strings.Contains(a, ":") {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func wireGuard(p profile.Profile) Endpoint {
