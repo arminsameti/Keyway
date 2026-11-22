@@ -54,4 +54,12 @@ final class ReorderTests: XCTestCase {
         XCTAssertEqual(Reorder.ids(fromDragPayload: "https://example.com"), [])
         XCTAssertEqual(Reorder.ids(fromDragPayload: Reorder.dragPayload([])), [])
     }
+
+    func testPlacementIsSentAsTheServerExpectsIt() throws {
+        let p = try XCTUnwrap(Reorder.placement(displayed: rows, moving: ["d"], insertAt: 1))
+        let json = try JSONSerialization.jsonObject(with: JSONEncoder().encode(p)) as? [String: Any]
+        XCTAssertEqual(json?["ids"] as? [String], ["d"])
+        XCTAssertEqual(json?["before"] as? String, "b")
+        XCTAssertNil(json?["after"], "the server wants exactly one of before and after")
+    }
 }

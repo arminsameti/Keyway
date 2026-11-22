@@ -101,12 +101,12 @@ public final class APIClient: @unchecked Sendable {
 
     /// Measures every server, or only `ids` when given.
     public func latency(mode: String, ids: [String] = []) async throws -> [String: Int] {
-        try await post("/api/latency", LatencyRequest(mode: mode, ids: ids.isEmpty ? nil : ids), as: LatencyBody.self, timeout: 130).latency
+        try await post("/api/latency", LatencyRequest(mode: mode, ids: ids), as: LatencyBody.self, timeout: 130).latency
     }
 
     /// Puts `ids` right before or after another server in the stored list order.
     public func moveNodes(_ p: Reorder.Placement) async throws {
-        _ = try await raw("POST", "/api/nodes/move", body: MoveRequest(ids: p.ids, before: p.before, after: p.after))
+        _ = try await raw("POST", "/api/nodes/move", body: p)
     }
 
     public func pickFastest(reconnect: Bool) async throws -> PickResult {
@@ -217,8 +217,7 @@ struct EnginesBody: Decodable { let engines: [EngineInfo] }
 struct AppUpdateBody: Decodable { let update: AppUpdate }
 struct JobsBody: Decodable { let jobs: [Job] }
 struct JobBody: Decodable { let job: Job }
-struct LatencyRequest: Encodable { let mode: String; let ids: [String]? }
-struct MoveRequest: Encodable { let ids: [String]; let before: String?; let after: String? }
+struct LatencyRequest: Encodable { let mode: String; let ids: [String] }
 struct LatencyBody: Decodable { let latency: [String: Int] }
 struct NodeBody: Decodable { let node: Node }
 struct TUNHelperBody: Decodable { let helper: TUNHelper }

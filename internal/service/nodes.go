@@ -1,9 +1,11 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"keyway/internal/core"
@@ -498,56 +500,54 @@ func (s *Service) chainView(d models.AppData, v NodeView) NodeView {
 	return v
 }
 
+// errServersGone is returned when servers a request names are no longer listed.
+var errServersGone = &models.ValidationError{Msg: "some of these servers are no longer in your list"}
+
+// splitNodes divides nodes into those whose ID is in ids, in list order, and the
+// rest. ok is false when some ID matches no node.
+func splitNodes(nodes []models.Node, ids []string) (picked, rest []models.Node, ok bool) {
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	for _, n := range nodes {
+		if want[n.ID] {
+			picked = append(picked, n)
+		} else {
+			rest = append(rest, n)
+		}
+	}
+	return picked, rest, len(picked) == len(want)
+}
+
 // MoveNodes puts the servers in ids, keeping their current relative order, right
 // before the server before or right after the server after (exactly one is
 // given). It is how the server list is rearranged by hand; the order is what
 // Keyway stores and shows when the list is not sorted by a column.
 func (s *Service) MoveNodes(ids []string, before, after string) error {
-	anchor := before
 	if (before == "") == (after == "") {
 		return &models.ValidationError{Msg: "say where to put the servers: before one server or after one"}
 	}
-	if after != "" {
-		anchor = after
-	}
+	anchor := cmp.Or(before, after)
 	if len(ids) == 0 {
 		return &models.ValidationError{Msg: "no servers to move"}
 	}
-	moving := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		moving[id] = true
-	}
-	if moving[anchor] {
+	if slices.Contains(ids, anchor) {
 		return &models.ValidationError{Msg: "cannot put a server next to itself"}
 	}
 	_, err := s.store.Update(func(d *models.AppData) error {
-		var moved, rest []models.Node
-		for _, n := range d.Nodes {
-			if moving[n.ID] {
-				moved = append(moved, n)
-			} else {
-				rest = append(rest, n)
-			}
+		moved, rest, ok := splitNodes(d.Nodes, ids)
+		if !ok {
+			return errServersGone
 		}
-		if len(moved) != len(moving) {
-			return &models.ValidationError{Msg: "some of these servers are no longer in your list"}
-		}
-		at := -1
-		for i, n := range rest {
-			if n.ID == anchor {
-				at = i
-			}
-		}
+		at := slices.IndexFunc(rest, func(n models.Node) bool { return n.ID == anchor })
 		if at < 0 {
 			return &models.ValidationError{Msg: "the server to move next to is no longer in your list"}
 		}
 		if after != "" {
 			at++
 		}
-		next := make([]models.Node, 0, len(d.Nodes))
-		next = append(next, rest[:at]...)
-		next = append(next, moved...)
-		d.Nodes = append(next, rest[at:]...)
+		d.Nodes = slices.Insert(rest, at, moved...)
 		return nil
 	})
 	return err

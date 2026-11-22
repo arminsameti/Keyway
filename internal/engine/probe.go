@@ -177,11 +177,7 @@ func WaitUsable(ctx context.Context, socksAddr string, timeout time.Duration) er
 	)
 	deadline := time.Now().Add(timeout)
 	for {
-		attempt := time.Until(deadline)
-		if attempt > attemptCap {
-			attempt = attemptCap
-		}
-		_, err := URLTest(ctx, socksAddr, "", attempt)
+		_, err := URLTest(ctx, socksAddr, "", min(time.Until(deadline), attemptCap))
 		if err == nil {
 			return nil
 		}

@@ -71,10 +71,9 @@ type process struct {
 	done     chan struct{}
 	started  time.Time
 	stopping atomic.Bool
-	// An elevated start that has a fallback is still starting until the helper
-	// reports ready; ending before that is the start failing, not a crash.
-	retryable bool
-	starting  atomic.Bool
+	// Set while an elevated start that has a fallback waits for the helper to
+	// report ready: ending before that is the start failing, not a crash.
+	starting atomic.Bool
 }
 
 // Runner supervises a single engine process (Xray or sing-box).
@@ -153,7 +152,7 @@ func (r *Runner) wait(p *process) {
 	if w != nil {
 		w.flush()
 	}
-	unexpected := !p.stopping.Load() && !(p.retryable && p.starting.Load())
+	unexpected := !p.stopping.Load() && !p.starting.Load()
 
 	r.mu.Lock()
 	if r.cur == p {
@@ -206,8 +205,8 @@ func (r *Runner) startElevated(opts StartOptions) error {
 		r.mu.Unlock()
 		return fmt.Errorf("start the privileged helper: %w", err)
 	}
-	p := &process{cmd: cmd, elev: el, done: make(chan struct{}), started: time.Now(), retryable: len(el.Fallback) > 0}
-	p.starting.Store(true)
+	p := &process{cmd: cmd, elev: el, done: make(chan struct{}), started: time.Now()}
+	p.starting.Store(len(el.Fallback) > 0)
 	r.cur = p
 	r.writePID(cmd.Process.Pid)
 	r.emit("waiting for administrator approval to start sing-box with a TUN interface")

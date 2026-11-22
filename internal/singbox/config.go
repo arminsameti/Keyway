@@ -173,14 +173,14 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 	var exit profile.Profile
 	if len(seg.Hops) > 0 {
 		exit = seg.Hops[len(seg.Hops)-1]
-		if exitLacksIPv6(exit) {
-			// The TUN carries IPv6, so apps that were offered AAAA records connect
-			// over IPv6, which such an exit rejects ("missing IPv6 local address"):
-			// a reset on every site the app does not retry over IPv4. Answer with
-			// IPv4 addresses only. (Server names are resolved the same way, so a
-			// server that is reachable only over IPv6 is not usable with these.)
-			cfg.DNS.Strategy = "ipv4_only"
-		}
+	}
+	noIPv6 := !exit.CarriesIPv6()
+	if noIPv6 {
+		// Apps that were offered AAAA records connect over IPv6, which such an exit
+		// rejects ("missing IPv6 local address"). Answer with IPv4 addresses only
+		// (server names resolve the same way, so a server reachable only over
+		// IPv6 is not usable with these). addTUN refuses what slips through.
+		cfg.DNS.Strategy = "ipv4_only"
 	}
 	if on, conc := muxFor(s, exit); on && muxCapable(exit) {
 		for i := range cfg.Outbounds {
@@ -204,7 +204,7 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 		return nil, err
 	}
 	if seg.TUN != nil {
-		rules = addTUN(cfg, seg.TUN, rules, exitLacksIPv6(exit))
+		rules = addTUN(cfg, seg.TUN, rules, noIPv6)
 	}
 	cfg.Route.Rules, cfg.Route.RuleSet = rules, sets
 	for _, r := range rules {
@@ -260,14 +260,13 @@ func addTUN(cfg *Config, t *profile.TUNOptions, rules []Rule, rejectIPv6 bool) [
 	}
 	var head []Rule
 	if rejectIPv6 {
-		// The exit has no IPv6, but apps can still end up with IPv6 addresses (macOS
-		// sends some DNS around the tunnel). The TUN accepts a TCP handshake before
-		// it routes the connection, so such a connection would "succeed" and then be
-		// reset, and the app could not fall back to IPv4. Refusing it before the
-		// handshake makes connect() fail and the app falls back at once. sing-box
-		// can only decide that early while no rule ahead of the rejection needs the
-		// connection's data, and a sniff rule does: so these go first, and the
-		// user's own rules after. Private IPv6 (the local network) stays direct.
+		// Apps can still end up with IPv6 addresses (macOS sends some DNS around the
+		// tunnel), and the TUN accepts a TCP handshake before routing, so an IPv6
+		// connection the exit cannot carry would "succeed" and then be reset, with no
+		// fallback to IPv4. Refusing it before the handshake makes connect() fail.
+		// sing-box can only decide that early while no earlier rule needs the
+		// connection's data, and a sniff rule does: so these go first. Private IPv6
+		// (the local network) stays direct.
 		head = append(head, hijackPort)
 		head = append(head, exclude...)
 		head = append(head, Rule{IPVersion: 6, IPIsPrivate: true, Outbound: "direct"}, Rule{IPVersion: 6, Action: "reject"})
@@ -533,28 +532,6 @@ func outbounds(p profile.Profile, tag, detour string) ([]Outbound, error) {
 		return nil, fmt.Errorf("%s is not supported by sing-box", profile.ProtocolName(p.Protocol))
 	}
 	return []Outbound{ob}, nil
-}
-
-// exitLacksIPv6 reports whether traffic leaving through this hop cannot use
-// IPv6. An OpenVPN tunnel only has the addresses its server pushes, which
-// commercial VPN servers limit to IPv4; a WireGuard endpoint has the local
-// addresses of its profile.
-func exitLacksIPv6(p profile.Profile) bool {
-	switch p.Protocol {
-	case profile.OpenVPN:
-		return true
-	case profile.WireGuard:
-		if p.WireGuard == nil {
-			return false
-		}
-		for _, a := range p.WireGuard.LocalAddress {
-			if strings.Contains(a, ":") {
-				return false
-			}
-		}
-		return true
-	}
-	return false
 }
 
 func wireGuard(p profile.Profile) Endpoint {

@@ -4,7 +4,7 @@ import Foundation
 /// Pure functions, so the rules can be tested without the UI.
 public enum Reorder {
     /// Where dragged servers land: right before one server or right after one.
-    public struct Placement: Equatable, Sendable {
+    public struct Placement: Equatable, Sendable, Encodable {
         public let ids: [String]
         public let before: String?
         public let after: String?
@@ -43,7 +43,7 @@ public enum Reorder {
     }
 
     /// The text a drag carries. Prefixed so other text dropped on the list is ignored.
-    static let dragPrefix = "keyway-servers:"
+    private static let dragPrefix = "keyway-servers:"
     public static func dragPayload(_ ids: [String]) -> String { dragPrefix + ids.joined(separator: ",") }
     public static func ids(fromDragPayload s: String) -> [String] {
         guard s.hasPrefix(dragPrefix) else { return [] }
