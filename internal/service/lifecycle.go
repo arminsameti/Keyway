@@ -156,8 +156,8 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 // refused". It is best effort: a server that never comes up is logged, not
 // turned into a failed connect, since a retrying tunnel may still recover.
 func (s *Service) waitOpenVPN(ctx context.Context, hops []profile.Profile, st models.Settings) {
-	n := openVPNHops(hops)
-	if n == 0 {
+	wait := openVPNWait(hops)
+	if wait == 0 {
 		return
 	}
 	socks, _, err := proxyPorts(st)
@@ -165,7 +165,7 @@ func (s *Service) waitOpenVPN(ctx context.Context, hops []profile.Profile, st mo
 		return // no credential-free SOCKS inbound to test through
 	}
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(socks))
-	if err := engine.WaitUsable(ctx, addr, openVPNReadyTimeout(n)); err != nil && ctx.Err() == nil {
+	if err := engine.WaitUsable(ctx, addr, wait); err != nil && ctx.Err() == nil {
 		s.log.Warn("the OpenVPN tunnel is not carrying traffic yet", "err", err)
 	}
 }
@@ -209,7 +209,10 @@ func (s *Service) startAll(ctx context.Context, pl *connPlan, segs []profile.Seg
 	}
 	l := pl.steps[last].Engine.Launch(pl.installs[last], paths[last])
 	if d.Settings.TUN.Enabled {
-		el, err := s.elevation(ctx, d, pl.installs[last], paths[last])
+		if err := s.ensureTUNHelper(ctx, d); err != nil {
+			return err
+		}
+		el, err := s.elevation(d, pl.installs[last], paths[last])
 		if err != nil {
 			return err
 		}

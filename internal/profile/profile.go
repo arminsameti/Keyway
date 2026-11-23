@@ -206,6 +206,28 @@ func (p Profile) UDPBased() bool {
 	return false
 }
 
+// CarriesIPv6 reports whether traffic leaving through this server can use IPv6.
+// An OpenVPN tunnel only has the addresses its server pushes, which commercial
+// providers limit to IPv4; a WireGuard endpoint has the local addresses of its
+// profile. Proxies resolve and dial for themselves, so they are not limited.
+func (p Profile) CarriesIPv6() bool {
+	switch p.Protocol {
+	case OpenVPN:
+		return false
+	case WireGuard:
+		if p.WireGuard == nil {
+			return true
+		}
+		for _, a := range p.WireGuard.LocalAddress {
+			if strings.Contains(a, ":") {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
 func (p Profile) validateOpenVPN() error {
 	o := p.OpenVPN
 	if o == nil {

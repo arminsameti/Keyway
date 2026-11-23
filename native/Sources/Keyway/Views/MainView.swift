@@ -130,7 +130,8 @@ struct ServersView: View {
 
     var body: some View {
         @Bindable var model = model
-        let picked = model.nodes.map(\.id).filter(model.selectedNodeIDs.contains)
+        let selected = model.nodes.map(\.id).filter(model.selectedNodeIDs.contains)
+        let subset = selected.count > 1 ? selected : [] // one selected server is just "the" server: test them all
         VStack(spacing: 16) {
             ConnectionCard()
             ProtocolChips()
@@ -142,9 +143,9 @@ struct ServersView: View {
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Menu {
-                    if picked.count > 1 {
-                        Button("Test \(picked.count) Selected") { model.testLatency(ids: picked) }
-                        Button("TCP quick test, selected") { model.testLatency("tcp", ids: picked) }
+                    if !subset.isEmpty {
+                        Button("Test \(subset.count) Selected") { model.testLatency(ids: subset) }
+                        Button("TCP quick test, selected") { model.testLatency("tcp", ids: subset) }
                         Divider()
                     }
                     Button("TCP quick test") { model.testLatency("tcp") }
@@ -152,7 +153,7 @@ struct ServersView: View {
                 } label: {
                     Label(model.testing ? "Testing…" : "Test Latency", systemImage: "bolt")
                 } primaryAction: {
-                    model.testLatency(ids: picked.count > 1 ? picked : [])
+                    model.testLatency(ids: subset)
                 }
                 .help("Test latency (⌘T). With several servers selected, only those are tested.")
                 .disabled(model.testing || model.nodes.isEmpty)

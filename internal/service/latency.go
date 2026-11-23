@@ -182,19 +182,9 @@ func (s *Service) TestLatency(ctx context.Context, mode string, ids ...string) (
 	d := s.store.Get()
 	nodes := d.Nodes
 	if len(ids) > 0 {
-		want := make(map[string]bool, len(ids))
-		for _, id := range ids {
-			want[id] = true
-		}
-		nodes = nodes[:0:0]
-		for _, n := range d.Nodes {
-			if want[n.ID] {
-				nodes = append(nodes, n)
-				delete(want, n.ID)
-			}
-		}
-		if len(want) > 0 {
-			return nil, mode, &models.ValidationError{Msg: "some of the selected servers are no longer in your list"}
+		var ok bool
+		if nodes, _, ok = splitNodes(d.Nodes, ids); !ok {
+			return nil, mode, errServersGone
 		}
 	}
 	if !d.Settings.TorEnabled {

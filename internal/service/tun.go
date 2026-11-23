@@ -58,10 +58,20 @@ func tunOptions(t models.TUNSettings, pl *connPlan) *profile.TUNOptions {
 	return o
 }
 
+// ensureTUNHelper sets up one-time authorization when it is chosen but not
+// installed yet: the user approves once, on the first TUN connect, and never
+// again.
+func (s *Service) ensureTUNHelper(ctx context.Context, d models.AppData) error {
+	if d.Settings.TUN.Privilege != "helper" || privileged.Installed() {
+		return nil
+	}
+	s.log.Info("setting up one-time authorization for TUN")
+	_, err := s.SetTUNHelper(ctx, true)
+	return err
+}
+
 // elevation builds the command that runs the last segment's sing-box as root.
-// When one-time authorization is chosen but not set up yet, this is where it
-// gets set up: the user authorizes once, on this first connect, and never again.
-func (s *Service) elevation(ctx context.Context, d models.AppData, in engine.Install, cfgPath string) (*engine.Elevation, error) {
+func (s *Service) elevation(d models.AppData, in engine.Install, cfgPath string) (*engine.Elevation, error) {
 	helper, err := helperBinary()
 	if err != nil {
 		return nil, err
@@ -72,13 +82,7 @@ func (s *Service) elevation(ctx context.Context, d models.AppData, in engine.Ins
 	el := &engine.Elevation{StopFile: stop, ReadyFile: ready, LogFile: logf}
 	if d.Settings.TUN.Privilege == "helper" {
 		if !privileged.Installed() {
-			s.log.Info("setting up one-time authorization for TUN")
-			if _, err := s.SetTUNHelper(ctx, true); err != nil {
-				return nil, err
-			}
-			if !privileged.Installed() {
-				return nil, ErrTUNHelperMissing
-			}
+			return nil, ErrTUNHelperMissing
 		}
 		el.Command = append([]string{"/usr/bin/sudo", "-n", privileged.HelperPath, "run-pinned"}, common...)
 		return el, nil
@@ -103,8 +107,8 @@ func runAdmin(ctx context.Context, args []string, why string) ([]byte, error) {
 // instead if that does not work. With Touch ID set up for sudo, sudo shows the
 // system's fingerprint prompt (it has no terminal for a password, so the
 // password dialog is the fallback). Otherwise the system's password dialog,
-// which says why it asks. Tests replace it.
-var adminCommand = func(args []string, why string) (primary, fallback []string) {
+// which says why it asks.
+func adminCommand(args []string, why string) (primary, fallback []string) {
 	return adminCommandFor(touchIDForSudo(os.ReadFile), args, why)
 }
 
