@@ -102,6 +102,8 @@ struct AppCommands: Commands {
         CommandMenu("Server") {
             Button("Test Latency") { model.testLatency() }
                 .keyboardShortcut("t")
+            Button(model.settings.tun.enabled ? "Switch to Proxy Mode" : "Switch to Whole-System Mode") { model.setWholeSystem(!model.settings.tun.enabled) }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
             Button("TCP Quick Test") { model.testLatency("tcp") }
             Button("Real Test") { model.testLatency("real") }
             Divider()

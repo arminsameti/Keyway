@@ -29,7 +29,7 @@ struct MainView: View {
                     case .groups: GroupsView()
                     case .routing: ScrollView { RoutingForm().padding(24) }.navigationTitle("Routing")
                     case .activity: ActivityView()
-                    case .engines: ScrollView { EnginesPane().padding(24) }.navigationTitle("Engines")
+                    case .engine(let name): EngineDetail(name: name)
                     }
                 }
             }
@@ -55,6 +55,29 @@ struct MainView: View {
     }
 }
 
+/// One engine's page: install, update and pick versions. Shared preferences live in Settings › Engines.
+struct EngineDetail: View {
+    let name: String
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let e = model.engines.first(where: { $0.name == name }) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    CardSection(title: "Installation") { EngineCard(engine: e) }
+                    Text("Engine preference, automatic downloads and update checks are in Settings › Engines.")
+                        .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                }
+                .frame(maxWidth: 680, alignment: .leading)
+                .padding(24)
+            }
+            .navigationTitle(e.displayName)
+        } else {
+            ContentUnavailableView("Engine not available", systemImage: "cpu")
+        }
+    }
+}
+
 // MARK: sidebar
 
 struct Sidebar: View {
@@ -70,14 +93,21 @@ struct Sidebar: View {
                 row(.routing, "Routing", "arrow.triangle.branch", count: nil)
                 row(.activity, "Activity", "waveform.path.ecg", count: nil)
             }
-            Section("Engine") {
-                Label("Engines", systemImage: "cpu")
-                    .badge(Text(model.engines.map { $0.name == "xray" ? "Xray" : $0.displayName }.joined(separator: " · ")))
-                    .tag(SidebarItem.engines)
+            Section("Engines") {
+                ForEach(model.engines) { e in
+                    Label(e.displayName, systemImage: "cpu")
+                        .badge(Text(engineBadge(e)))
+                        .tag(SidebarItem.engine(e.name))
+                }
             }
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) { SystemProxyCard().padding(10) }
+    }
+
+    private func engineBadge(_ e: EngineInfo) -> String {
+        if e.active.isEmpty { return "Not installed" }
+        return e.updateAvailable ? "Update" : String(e.active.dropFirst())
     }
 
     @ViewBuilder
@@ -130,8 +160,7 @@ struct ServersView: View {
 
     var body: some View {
         @Bindable var model = model
-        let selected = model.nodes.map(\.id).filter(model.selectedNodeIDs.contains)
-        let subset = selected.count > 1 ? selected : [] // one selected server is just "the" server: test them all
+        let subset = model.selectedNodeList
         VStack(spacing: 16) {
             ConnectionCard()
             ProtocolChips()
@@ -144,18 +173,22 @@ struct ServersView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 Menu {
                     if !subset.isEmpty {
-                        Button("Test \(subset.count) Selected") { model.testLatency(ids: subset) }
+                        Button(subset.count == 1 ? "Test Selected Server" : "Test \(subset.count) Selected") { model.testLatency(ids: subset) }
                         Button("TCP quick test, selected") { model.testLatency("tcp", ids: subset) }
                         Divider()
                     }
-                    Button("TCP quick test") { model.testLatency("tcp") }
-                    Button("Real test") { model.testLatency("real") }
+                    Button("TCP quick test, all") { model.testLatency("tcp", ids: []) }
+                    Button("Real test, all") { model.testLatency("real", ids: []) }
                 } label: {
-                    Label(model.testing ? "Testing…" : "Test Latency", systemImage: "bolt")
+                    Label {
+                        Text(model.testing ? "Testing…" : "Test Latency")
+                    } icon: {
+                        if model.testingAll { ProgressView().controlSize(.small) } else { Image(systemName: "bolt") }
+                    }
                 } primaryAction: {
-                    model.testLatency(ids: subset)
+                    model.testLatency()
                 }
-                .help("Test latency (⌘T). With several servers selected, only those are tested.")
+                .help("Test latency (⌘T). With servers selected, only those are tested.")
                 .disabled(model.testing || model.nodes.isEmpty)
 
                 Menu {
@@ -186,6 +219,7 @@ struct ConnectionCard: View {
     var body: some View {
         let connected = model.connected
         let node = model.activeNode ?? model.selectedNode
+        VStack(alignment: .leading, spacing: 12) {
         HStack(spacing: 16) {
             RoundedRectangle(cornerRadius: 12)
                 .fill(connected ? Palette.green : Palette.idleShield)
@@ -194,7 +228,7 @@ struct ConnectionCard: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(connected ? "Connected" : "Not Connected").font(.system(size: 17, weight: .bold))
+                    Text(connected ? "Connected" : "Not Connected").font(.system(size: 17, weight: .bold)).fixedSize()
                     if connected {
                         Text(verbatim: "\(model.status.activeGroup.map { "\($0) → " } ?? "")\(model.status.activeNode) · \(Format.latency(model.status.activeLatencyMs))")
                             .font(.system(size: 12, weight: .semibold)).foregroundStyle(Palette.greenText)
@@ -219,6 +253,20 @@ struct ConnectionCard: View {
                 .frame(minWidth: 112)
                 .disabled(model.connecting || (!connected && node == nil))
                 .accessibilityValue(connected ? "Connected" : "Not connected")
+        }
+        HStack(spacing: 10) {
+            Picker("Mode", selection: Binding(get: { model.settings.tun.enabled }, set: { model.setWholeSystem($0) })) {
+                Text("Proxy").tag(false)
+                Text("Whole system").tag(true)
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            .disabled(model.connecting)
+            .accessibilityLabel("Mode")
+            Text(model.settings.tun.enabled ? "Every app on this Mac goes through the proxy (needs administrator rights)."
+                                            : "Apps that use the system proxy go through it.")
+                .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(1)
+            Spacer(minLength: 0)
+        }
         }
         .padding(.vertical, 16).padding(.horizontal, 18)
         .background(RoundedRectangle(cornerRadius: 12).fill(connected ? Palette.connectedCard : Palette.idleCard))
@@ -371,6 +419,9 @@ struct ServerTable: View {
                 let c = Palette.latency(n.latencyMs)
                 HStack {
                     Spacer()
+                    if model.testingIDs.contains(n.id) {
+                        ProgressView().controlSize(.small).accessibilityLabel("Testing latency")
+                    }
                     Text(Format.latency(n.latencyMs))
                         .font(.system(size: 12, weight: .semibold)).monospacedDigit()
                         .foregroundStyle(c.fg)
@@ -379,7 +430,7 @@ struct ServerTable: View {
                         .accessibilityLabel(Format.latencyLong(n.latencyMs))
                 }
             }
-            .width(84)
+            .width(104)
         } rows: {
             ForEach(groups) { g in
                 Section {

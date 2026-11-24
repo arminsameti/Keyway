@@ -6,7 +6,8 @@ import SwiftUI
 import KeywayCore
 
 enum SidebarItem: Hashable {
-    case servers, subscriptions, groups, routing, activity, engines
+    case servers, subscriptions, groups, routing, activity
+    case engine(String) // an engine's name, e.g. "xray"
 }
 
 /// A server group in the table: one subscription or "Added Manually".
@@ -61,6 +62,9 @@ final class AppModel {
     var tunBusy = false
     var errorMessage: String?
     var testing = false
+    /// Servers a running latency test covers; empty while it covers every server (see `testingAll`).
+    private(set) var testingIDs: Set<Node.ID> = []
+    private(set) var testingAll = false
     var connecting = false
     var lastTestMode = "real"
 
@@ -314,14 +318,21 @@ final class AppModel {
         }
     }
 
-    /// Measures every server, or only `ids` (the selection) when given.
-    func testLatency(_ mode: String? = nil, ids: [Node.ID] = []) {
+    /// The selected servers in list order.
+    var selectedNodeList: [Node.ID] { nodes.map(\.id).filter(selectedNodeIDs.contains) }
+
+    /// Measures `ids`; without `ids`, the selected servers, or every server when none is selected.
+    /// Pass an empty array to force testing every server.
+    func testLatency(_ mode: String? = nil, ids: [Node.ID]? = nil) {
         let m = mode ?? (settings.latencyMethod == "tcp" ? "tcp" : "real")
+        let target = ids ?? selectedNodeList
         lastTestMode = m
         testing = true
+        testingAll = target.isEmpty
+        testingIDs = Set(target)
         perform { [weak self] c in
-            defer { Task { @MainActor in self?.testing = false } }
-            _ = try await c.latency(mode: m, ids: ids)
+            defer { Task { @MainActor in self?.testing = false; self?.testingAll = false; self?.testingIDs = [] } }
+            _ = try await c.latency(mode: m, ids: target)
         }
     }
 
@@ -361,6 +372,22 @@ final class AppModel {
     func save(_ s: AppSettings) {
         settings = s
         perform { try await $0.saveSettings(s) }
+    }
+
+    /// Switches between routing through the system proxy and capturing the whole system (TUN).
+    /// A running connection restarts so the change takes effect at once.
+    func setWholeSystem(_ on: Bool) {
+        guard settings.tun.enabled != on else { return }
+        var s = settings
+        s.tun.enabled = on
+        settings = s
+        let reconnect = connected
+        if reconnect { connecting = true }
+        perform { [weak self] c in
+            defer { Task { @MainActor in self?.connecting = false } }
+            try await c.saveSettings(s)
+            if reconnect { try await c.connect() }
+        }
     }
 
     func refreshTunHelper() {
