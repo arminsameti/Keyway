@@ -95,6 +95,13 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 		return ConnectResult{}, serr
 	}
 	segs[len(segs)-1].Stats = stats
+	// the compiled filter lists are placed before any config is checked; only
+	// the segment that routes references them
+	block, err := s.placeFilterFiles(pl)
+	if err != nil {
+		return ConnectResult{}, err
+	}
+	segs[len(segs)-1].Block = block
 	if d.Settings.TUN.Enabled {
 		segs[len(segs)-1].TUN = tunOptions(d.Settings.TUN, pl)
 	}

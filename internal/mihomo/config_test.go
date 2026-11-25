@@ -1,6 +1,8 @@
 package mihomo
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -653,7 +655,7 @@ func TestBuildRefusesWhatSupportsRefuses(t *testing.T) {
 // against the field tags of Mihomo v1.19.33 (adapter/outbound, listener/inbound,
 // config/config.go).
 var knownTop = set("mode", "log-level", "ipv6", "find-process-mode", "geodata-mode", "geo-auto-update", "geox-url",
-	"external-controller", "secret", "dns", "sniffer", "listeners", "proxies", "rules", "allow-lan", "profile")
+	"external-controller", "secret", "dns", "sniffer", "listeners", "proxies", "rules", "allow-lan", "profile", "rule-providers")
 var knownProxy = set("name", "type", "server", "port", "uuid", "alterId", "cipher", "password", "username", "flow", "udp", "network",
 	"tls", "servername", "sni", "alpn", "skip-cert-verify", "fingerprint", "client-fingerprint", "reality-opts", "ws-opts", "grpc-opts",
 	"h2-opts", "xhttp-opts", "smux", "dialer-proxy", "encryption", "up", "down", "obfs", "obfs-password", "congestion-controller",
@@ -705,5 +707,48 @@ func TestOnlyKnownKeysAreEmitted(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func goldenYAML(t *testing.T, name string, got []byte) {
+	t.Helper()
+	path := filepath.Join("testdata", name+".yaml")
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err := os.WriteFile(path, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(want) != string(got) {
+		t.Errorf("%s changed.\nwant:\n%s\ngot:\n%s", path, want, got)
+	}
+}
+
+func TestGoldenFilters(t *testing.T) {
+	seg := profile.Single(vless())
+	seg.Block = &profile.BlockFiles{SingBoxPath: "/unused"}
+	b, err := BuildConfig(seg, settings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	goldenYAML(t, "mihomo-filters", b)
+	got := rules(t, parse(t, b))
+	if got[0] != "GEOSITE,category-ads-all,REJECT" || got[1] != "RULE-SET,keyway-block,REJECT" {
+		t.Errorf("rules start %v", got[:2])
+	}
+}
+
+func TestNoFiltersUnchanged(t *testing.T) {
+	b, err := BuildConfig(profile.Single(vless()), settings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	goldenYAML(t, "mihomo-default", b)
+	if strings.Contains(string(b), "rule-providers") || strings.Contains(string(b), "keyway-block") {
+		t.Errorf("no list chosen, but the config mentions one:\n%s", b)
 	}
 }

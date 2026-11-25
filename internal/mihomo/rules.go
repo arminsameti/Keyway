@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"keyway/internal/filters"
 	"keyway/internal/models"
 )
 
@@ -96,7 +97,7 @@ func (r rule) text(noResolve bool) string {
 // rules were read, so the IP rules go first with no-resolve (they match only
 // destinations that are already addresses) and again, resolving, after the last
 // rule.
-func buildRules(s models.Settings) ([]string, error) {
+func buildRules(s models.Settings, withFilters bool) ([]string, error) {
 	var all []rule
 	for _, l := range routeLists(s) {
 		for _, e := range l.entries {
@@ -105,6 +106,10 @@ func buildRules(s models.Settings) ([]string, error) {
 				return nil, err
 			}
 			all = append(all, rs...)
+		}
+		if l.target == "block" && withFilters && s.BlockAds {
+			// the compiled filter lists, right after the existing block rules
+			all = append(all, rule{body: "RULE-SET," + filters.Tag, to: target("block")})
 		}
 	}
 	var out []string
@@ -139,7 +144,7 @@ func rulesNeed(rules []string) []string {
 // GeoData lists the geodata files the routing settings need, so they can be
 // downloaded (and verified) before Mihomo starts.
 func GeoData(s models.Settings) []string {
-	rules, err := buildRules(s)
+	rules, err := buildRules(s, false)
 	if err != nil {
 		return nil
 	}

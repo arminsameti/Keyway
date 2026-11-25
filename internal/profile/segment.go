@@ -20,6 +20,8 @@ type Bridge struct {
 //     next segment.
 //   - Stats, when set on the segment that serves the user, makes the engine
 //     expose its traffic counters on a loopback port.
+//   - Block, when set on the segment that serves the user, makes the block
+//     rule also match the compiled filter lists (placed by the service).
 type Segment struct {
 	Hops     []Profile
 	Upstream *Bridge
@@ -27,6 +29,14 @@ type Segment struct {
 	Stats    *StatsAPI
 	TUN      *TUNOptions
 	Runtime  *Runtime
+	Block    *BlockFiles
+}
+
+// BlockFiles says the compiled filter lists are in place. The Xray, V2Ray and
+// Mihomo files are found by name in the engine's own asset or home directory;
+// sing-box reads its rule set from an absolute path.
+type BlockFiles struct {
+	SingBoxPath string
 }
 
 // Runtime is the per-run state of an engine that keeps files and a control

@@ -13,8 +13,10 @@ import (
 	"strings"
 	"time"
 
+	"keyway/internal/engine"
 	"keyway/internal/filters"
 	"keyway/internal/models"
+	"keyway/internal/profile"
 )
 
 // Limits (tunable later).
@@ -526,4 +528,90 @@ func (s *Service) refreshDueFilters(ctx context.Context, lastTry map[string]time
 			s.log.Warn("filter list refresh failed", "list", l.Name, "err", err)
 		}
 	}
+}
+
+// ---- connect-time placement ----
+
+func (s *Service) activeDir() string { return filepath.Join(s.filtersDir(), "active") }
+
+// activeSingBoxPath is where sing-box reads the compiled rule set from. It is
+// an absolute path, also under TUN, where sing-box runs elevated.
+func (s *Service) activeSingBoxPath() string {
+	return filepath.Join(s.activeDir(), filters.SingBoxFile)
+}
+
+// previewBlock is the Block a connect would set, without placing anything; nil
+// when a connect would add no filter rule.
+func (s *Service) previewBlock() *profile.BlockFiles {
+	if !s.store.Get().Settings.FiltersActive() {
+		return nil
+	}
+	s.filtersMu.Lock()
+	compiled := s.compiledSum != ""
+	s.filtersMu.Unlock()
+	if !compiled {
+		return nil
+	}
+	return &profile.BlockFiles{SingBoxPath: s.activeSingBoxPath()}
+}
+
+// copyFileAtomic copies src into dst through a temp file in dst's directory and
+// a rename, so an engine never reads a partial file.
+func copyFileAtomic(src, dst string) error {
+	b, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(dst, b)
+}
+
+// placeFilterFiles copies the compiled files to where each engine of the plan
+// reads them (see the Block rules in the engine configs) and records the
+// compiled hash for ApplyOnConnect. It returns nil, and places nothing, when
+// no filter rule is wanted: Block ads off, no enabled list, or nothing
+// compiled (an empty set never becomes a block rule).
+//
+// Xray and V2Ray get the .dat in their asset directory at every step, since
+// each segment is checked on its own; only the segment that routes references
+// it. Mihomo gets the provider file in its home, sing-box an active copy.
+func (s *Service) placeFilterFiles(pl *connPlan) (*profile.BlockFiles, error) {
+	if !s.store.Get().Settings.FiltersActive() {
+		return nil, nil
+	}
+	// compileMu first (as compileFilters does): a compile in progress would
+	// otherwise hand us a mix of old and new files.
+	s.compileMu.Lock()
+	defer s.compileMu.Unlock()
+	s.filtersMu.Lock()
+	defer s.filtersMu.Unlock()
+	if s.compiledSum == "" {
+		return nil, nil
+	}
+	src := func(name string) string { return filepath.Join(s.compiledDir(), name) }
+	dst := s.activeSingBoxPath()
+	if err := copyFileAtomic(src(filters.SingBoxFile), dst); err != nil {
+		return nil, fmt.Errorf("place the filter lists: %w", err)
+	}
+	for k, st := range pl.steps {
+		if k >= len(pl.installs) {
+			break
+		}
+		var dir, name string
+		switch st.Engine.Name() {
+		case engine.NameXray, engine.NameV2Ray:
+			dir, name = pl.installs[k].AssetDir, filters.XrayFile
+		case engine.NameMihomo:
+			dir, name = filepath.Join(filepath.Dir(pl.installs[k].AssetDir), "data"), filters.MihomoFile
+		default:
+			continue
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("place the filter lists: %w", err)
+		}
+		if err := copyFileAtomic(src(name), filepath.Join(dir, name)); err != nil {
+			return nil, fmt.Errorf("place the filter lists for %s: %w", st.Engine.DisplayName(), err)
+		}
+	}
+	s.lastConnectHash = s.compiledSum
+	return &profile.BlockFiles{SingBoxPath: dst}, nil
 }

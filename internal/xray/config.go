@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"keyway/internal/filters"
 	"keyway/internal/models"
 	"keyway/internal/profile"
 )
@@ -53,7 +54,7 @@ func BuildConfig(seg profile.Segment, s models.Settings) (*Config, error) {
 		cfg.Outbounds[0].Mux = &Mux{Enabled: true, Concurrency: conc}
 	}
 	cfg.Inbounds = buildInbounds(s)
-	rules, err := buildRules(s)
+	rules, err := buildRules(s, seg.Block != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -142,8 +143,8 @@ func SplitList(s string) []string {
 }
 
 // buildRules honours DirectSites / ProxySites / BlockedSites / BlockAds in every
-// mode. Order matters: block, then explicit proxy, then direct.
-func buildRules(s models.Settings) ([]Rule, error) {
+// mode. With filters set, the block rule also matches the compiled filter lists. Order matters: block, then explicit proxy, then direct.
+func buildRules(s models.Settings, withFilters bool) ([]Rule, error) {
 	var rules []Rule
 	add := func(tag string, domains, ips []string) {
 		if len(domains) > 0 || len(ips) > 0 {
@@ -154,6 +155,10 @@ func buildRules(s models.Settings) ([]Rule, error) {
 	blocked := SplitList(s.BlockedSites)
 	if s.BlockAds && len(blocked) == 0 {
 		blocked = []string{"geosite:category-ads-all"}
+	}
+	if withFilters && s.BlockAds {
+		// the compiled filter lists, placed next to the engine at connect time
+		blocked = append(blocked, "ext:"+filters.XrayFile+":"+filters.XrayCode)
 	}
 	if s.BlockAds || s.RoutingMode == "custom" {
 		add("block", blocked, nil)

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"keyway/internal/engine"
 	"keyway/internal/filters"
 	"keyway/internal/models"
 )
@@ -370,5 +371,114 @@ func TestProxyAddr(t *testing.T) {
 	e.svc.running = func() bool { return true }
 	if a := e.svc.listProxyAddr(); a != "127.0.0.1:4" {
 		t.Errorf("got %q", a)
+	}
+}
+
+// placeEnv is a compiled set plus a plan of an Xray step, a sing-box step and a
+// Mihomo step with install dirs in a temp tree.
+func placeEnv(t *testing.T) (*filterEnv, *connPlan, []string) {
+	t.Helper()
+	e := newFilterEnv(t)
+	e.setLists(t, true, e.custom("l1"))
+	if err := e.svc.RefreshFilters(context.Background(), "l1"); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	xdir := filepath.Join(root, "xray", "v1")
+	mdir := filepath.Join(root, "mihomo", "v1")
+	sdir := filepath.Join(root, "sing-box", "v1")
+	for _, d := range []string{xdir, mdir, sdir} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pl := &connPlan{
+		steps:    []engine.Step{{Engine: engine.Xray{}}, {Engine: &engine.SingBox{}}, {Engine: engine.Mihomo{}}},
+		installs: []engine.Install{{AssetDir: xdir}, {AssetDir: sdir}, {AssetDir: mdir}},
+	}
+	return e, pl, []string{xdir, sdir, filepath.Join(filepath.Dir(mdir), "data")}
+}
+
+func TestPlaceFilterFiles(t *testing.T) {
+	e, pl, dirs := placeEnv(t)
+	blk, err := e.svc.placeFilterFiles(pl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantActive := filepath.Join(e.svc.dir, "filters", "active", filters.SingBoxFile)
+	if blk == nil || blk.SingBoxPath != wantActive {
+		t.Fatalf("block = %+v, want sing-box path %s", blk, wantActive)
+	}
+	compiledDat, _ := os.ReadFile(e.compiled(filters.XrayFile))
+	for path, want := range map[string]string{
+		filepath.Join(dirs[0], filters.XrayFile):   string(compiledDat),
+		filepath.Join(dirs[2], filters.MihomoFile): "",
+		wantActive: "",
+	} {
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if want != "" && string(got) != want {
+			t.Errorf("%s differs from the compiled file", path)
+		}
+	}
+	// nothing leaks into the sing-box install dir
+	if ents, _ := os.ReadDir(dirs[1]); len(ents) != 0 {
+		t.Errorf("sing-box install dir has files: %v", ents)
+	}
+	// a compiled file changed after placement does not change the active copy
+	before, _ := os.ReadFile(wantActive)
+	if err := os.WriteFile(e.compiled(filters.SingBoxFile), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.ReadFile(wantActive)
+	if string(before) != string(after) || string(after) == "changed" {
+		t.Error("the active copy follows the compiled file")
+	}
+}
+
+func TestPlaceFilterFilesRecordsHash(t *testing.T) {
+	e, pl, _ := placeEnv(t)
+	e.svc.running = func() bool { return true }
+	if !e.svc.Filters().ApplyOnConnect {
+		t.Fatal("want apply-on-connect before the first placement")
+	}
+	if _, err := e.svc.placeFilterFiles(pl); err != nil {
+		t.Fatal(err)
+	}
+	if e.svc.Filters().ApplyOnConnect {
+		t.Error("placed files still reported as waiting for connect")
+	}
+}
+
+func TestPlaceFilterFilesNothingToPlace(t *testing.T) {
+	e, pl, dirs := placeEnv(t)
+	// Block ads off
+	e.setLists(t, false, e.custom("l1"))
+	if blk, err := e.svc.placeFilterFiles(pl); blk != nil || err != nil {
+		t.Fatalf("block ads off: %+v, %v", blk, err)
+	}
+	// on again, but nothing compiled
+	e.setLists(t, true, e.custom("l1"))
+	e.svc.filtersMu.Lock()
+	e.svc.compiledSum = ""
+	e.svc.filtersMu.Unlock()
+	if blk, err := e.svc.placeFilterFiles(pl); blk != nil || err != nil {
+		t.Fatalf("nothing compiled: %+v, %v", blk, err)
+	}
+	if _, err := os.Stat(filepath.Join(dirs[0], filters.XrayFile)); !os.IsNotExist(err) {
+		t.Errorf("a file was placed for nothing: %v", err)
+	}
+}
+
+func TestPreviewBlockHasNoSideEffects(t *testing.T) {
+	e, _, _ := placeEnv(t)
+	blk := e.svc.previewBlock()
+	if blk == nil || blk.SingBoxPath != filepath.Join(e.svc.dir, "filters", "active", filters.SingBoxFile) {
+		t.Fatalf("preview block = %+v", blk)
+	}
+	if _, err := os.Stat(blk.SingBoxPath); !os.IsNotExist(err) {
+		t.Errorf("preview copied a file: %v", err)
 	}
 }

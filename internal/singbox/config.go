@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"keyway/internal/filters"
 	"keyway/internal/models"
 	"keyway/internal/profile"
 )
@@ -199,7 +200,7 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 		}
 		cfg.Inbounds = append(cfg.Inbounds, in)
 	}
-	rules, sets, err := buildRules(s, ruleSetPath)
+	rules, sets, err := buildRules(s, ruleSetPath, seg.Block)
 	if err != nil {
 		return nil, err
 	}
@@ -602,7 +603,7 @@ func ruleSetName(e string) (string, bool) {
 	return "", false
 }
 
-func buildRules(s models.Settings, ruleSetPath func(string) string) ([]Rule, []RuleSet, error) {
+func buildRules(s models.Settings, ruleSetPath func(string) string, block *profile.BlockFiles) ([]Rule, []RuleSet, error) {
 	rules := []Rule{}
 	if s.Sniffing {
 		rules = append(rules, Rule{Action: "sniff"})
@@ -614,6 +615,10 @@ func buildRules(s models.Settings, ruleSetPath func(string) string) ([]Rule, []R
 			return nil, nil, err
 		}
 		rules = append(rules, rs...)
+		if l.target == "block" && block != nil && s.BlockAds {
+			// the compiled filter lists, right after the existing block rules
+			rules = append(rules, Rule{Action: "reject", RuleSet: []string{filters.Tag}})
+		}
 	}
 	names := make([]string, 0, len(sets))
 	for n := range sets {
@@ -623,6 +628,9 @@ func buildRules(s models.Settings, ruleSetPath func(string) string) ([]Rule, []R
 	var rs []RuleSet
 	for _, n := range names {
 		rs = append(rs, RuleSet{Type: "local", Tag: n, Format: "binary", Path: ruleSetPath(n)})
+	}
+	if block != nil && s.BlockAds {
+		rs = append(rs, RuleSet{Type: "local", Tag: filters.Tag, Format: "source", Path: block.SingBoxPath})
 	}
 	return rules, rs, nil
 }

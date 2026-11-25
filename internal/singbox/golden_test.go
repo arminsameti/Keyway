@@ -135,3 +135,62 @@ func TestGoldenDefaultConfigs(t *testing.T) {
 	b, _ := json.MarshalIndent(probe, "", "  ")
 	golden(t, "singbox-probe", append(b, '\n'))
 }
+
+func TestGoldenFilters(t *testing.T) {
+	seg := profile.Single(goldenProfile())
+	seg.Block = &profile.BlockFiles{SingBoxPath: "/data/filters/active/keyway-block.json"}
+	cfg, err := BuildConfig(seg, models.DefaultSettings(), ruleSetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden(t, "singbox-filters", append(b, '\n'))
+}
+
+func TestNoFiltersUnchanged(t *testing.T) {
+	cfg, err := BuildConfig(profile.Single(goldenProfile()), models.DefaultSettings(), ruleSetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.MarshalIndent(cfg, "", "  ")
+	golden(t, "singbox-default", append(b, '\n'))
+}
+
+func TestFilterRuleFollowsBlockRulesAndSurvivesTUN(t *testing.T) {
+	s := models.DefaultSettings()
+	s.TUN.Enabled = true
+	seg := profile.Single(goldenProfile())
+	seg.TUN = &profile.TUNOptions{Stack: "mixed", MTU: 9000}
+	seg.Block = &profile.BlockFiles{SingBoxPath: "/data/filters/active/keyway-block.json"}
+	cfg, err := BuildConfig(seg, s, ruleSetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var idxDefault, idxFilter = -1, -1
+	for i, r := range cfg.Route.Rules {
+		if len(r.RuleSet) == 1 && r.RuleSet[0] == "geosite-category-ads-all" {
+			idxDefault = i
+		}
+		if len(r.RuleSet) == 1 && r.RuleSet[0] == "keyway-block" {
+			idxFilter = i
+			if r.Action != "reject" {
+				t.Errorf("filter rule action = %q", r.Action)
+			}
+		}
+	}
+	if idxDefault < 0 || idxFilter != idxDefault+1 {
+		t.Errorf("default block at %d, filter at %d", idxDefault, idxFilter)
+	}
+	found := false
+	for _, rs := range cfg.Route.RuleSet {
+		if rs.Tag == "keyway-block" && rs.Type == "local" && rs.Format == "source" && rs.Path == seg.Block.SingBoxPath {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("rule set missing: %+v", cfg.Route.RuleSet)
+	}
+}
