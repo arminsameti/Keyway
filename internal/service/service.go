@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,6 +20,7 @@ import (
 
 	"keyway/internal/core"
 	"keyway/internal/engine"
+	"keyway/internal/filters"
 	"keyway/internal/link"
 	"keyway/internal/models"
 	"keyway/internal/store"
@@ -104,6 +106,26 @@ type Service struct {
 	tagCache map[string]map[string]bool
 
 	fetch func(ctx context.Context, url string) (subResponse, error) // replaceable in tests
+
+	// filter lists. filtersMu guards the in-memory compiled state; the main
+	// locks are never held across a download.
+	fetchGuard    func(net.IP) bool // refuses private targets on list and catalog fetches; tests relax it
+	catalogURL    string
+	maxMerged     int
+	running       func() bool                                // nil: s.run.IsRunning (tests fake it)
+	filterRefresh func(ctx context.Context, id string) error // the save-triggered refresh (tests observe it)
+	bg            sync.WaitGroup                             // background filter refreshes
+	catalogMu     sync.Mutex                                 // serialises catalog fetches
+	compileMu     sync.Mutex                                 // serialises compiles
+	flightMu      sync.Mutex
+	flights       map[string]*filterFlight // refreshes in progress, by list id
+
+	filtersMu       sync.Mutex
+	set             filters.Set
+	widened         []filters.Widened
+	mergeErr        string
+	compiledSum     string // hash of the compiled files
+	lastConnectHash string // hash of the compiled files at the last connect (set when the files are placed)
 }
 
 // New builds the service and migrates old data if needed.
@@ -118,8 +140,10 @@ func New(c Config) (*Service, error) {
 		store: c.Store, engines: c.Engines, enginesDir: c.EnginesDir, run: c.Runner, sys: c.Sys, log: c.Logger, dir: c.Dir,
 		autoDL:   c.AutoDownload,
 		verCache: map[string]string{}, tagCache: map[string]map[string]bool{},
-		fetch: safeFetch,
-		app:   c.AppUpdater, downloadsDir: c.DownloadsDir,
+		fetch:      safeFetch,
+		fetchGuard: blockedIP, catalogURL: filters.CatalogURL, maxMerged: maxMergedDomains,
+		flights: map[string]*filterFlight{},
+		app:     c.AppUpdater, downloadsDir: c.DownloadsDir,
 	}
 	if s.downloadsDir == "" {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -131,6 +155,12 @@ func New(c Config) (*Service, error) {
 	s.run.OnExit(s.onEngineExit)
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate data: %w", err)
+	}
+	s.filterRefresh = s.RefreshFilters
+	if c.Store.Get().Settings.FiltersActive() {
+		if _, _, err := s.compileFilters(); err != nil {
+			s.log.Warn("compile filter lists", "err", err)
+		}
 	}
 	s.syncTags()
 	return s, nil
@@ -408,6 +438,7 @@ func (s *Service) UpdateSettings(ctx context.Context, in models.Settings) (Setti
 	}
 	s.torFlag.Store(in.TorEnabled)
 	s.setDNS(in)
+	s.filtersChanged(ctx, old, in)
 	res := SettingsResult{RestartRequired: old.APIPort != in.APIPort}
 	if old.TorEnabled && !in.TorEnabled && strings.Contains(s.current().Label, engine.TorDisplayName) && s.run.IsRunning() {
 		if err := s.Disconnect(ctx); err != nil {

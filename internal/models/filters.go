@@ -33,6 +33,7 @@ type FilterStatus struct {
 	Domains      int       `json:"domains"` // after parsing, before de-duplication
 	Skipped      int       `json:"skipped"` // lines that were not domain rules
 	LastError    string    `json:"lastError,omitempty"`
+	URL          string    `json:"url,omitempty"` // the URL of the last successful download
 }
 
 // EnabledFilterLists returns the lists the user has switched on.
@@ -44,6 +45,16 @@ func (s Settings) EnabledFilterLists() []FilterList {
 		}
 	}
 	return out
+}
+
+// FindFilterList returns the chosen list with the given ID.
+func (d AppData) FindFilterList(id string) (FilterList, bool) {
+	for _, l := range d.Settings.FilterLists {
+		if l.ID == id {
+			return l, true
+		}
+	}
+	return FilterList{}, false
 }
 
 // FiltersActive reports whether any filter list applies: they only count while
