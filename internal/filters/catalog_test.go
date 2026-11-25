@@ -67,3 +67,25 @@ func TestParseCatalogRejectsGarbage(t *testing.T) {
 		}
 	}
 }
+
+func TestParseCatalogSkipsBadEntries(t *testing.T) {
+	in := `{"filters":[
+	 {"filterKey":"good","downloadUrl":"https://example.com/a.txt"},
+	 {"filterKey":"plain","downloadUrl":"http://example.com/b.txt"},
+	 {"filterKey":"hostless","downloadUrl":"https:///c.txt"},
+	 {"filterKey":"","downloadUrl":"https://example.com/d.txt"},
+	 {"filterKey":"good","downloadUrl":"https://example.com/e.txt"},
+	 {"filterKey":"also","downloadUrl":"https://example.com/f.txt"}
+	],"tags":[],"groups":[]}`
+	c, err := ParseCatalog([]byte(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Lists) != 2 {
+		t.Fatalf("lists = %+v, want good and also", c.Lists)
+	}
+	g, _ := c.Find("good")
+	if !strings.HasSuffix(g.DownloadURL, "a.txt") {
+		t.Fatalf("duplicate key kept %q, want the first", g.DownloadURL)
+	}
+}

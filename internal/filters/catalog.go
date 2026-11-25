@@ -68,8 +68,9 @@ type rawCatalog struct {
 	} `json:"groups"`
 }
 
-// ParseCatalog decodes the catalog JSON. It rejects a catalog with no lists
-// and any list whose download URL is not https.
+// ParseCatalog decodes the catalog JSON. It skips entries with an empty or
+// duplicate key (the first wins) or a download URL that is not https, and
+// rejects a catalog left with no lists.
 func ParseCatalog(b []byte) (Catalog, error) {
 	var raw rawCatalog
 	if err := json.Unmarshal(b, &raw); err != nil {
@@ -94,9 +95,12 @@ func ParseCatalog(b []byte) (Catalog, error) {
 
 	display := map[string]int{}
 	for _, f := range raw.Filters {
+		if _, dup := display[f.FilterKey]; dup || f.FilterKey == "" {
+			continue
+		}
 		u, err := url.Parse(f.DownloadURL)
 		if err != nil || u.Scheme != "https" || u.Host == "" {
-			return Catalog{}, fmt.Errorf("list %q has a download URL that is not https", f.FilterKey)
+			continue
 		}
 		l := CatalogList{
 			Key: f.FilterKey, ID: f.FilterID, Group: f.GroupID, Name: f.Name,
@@ -116,6 +120,9 @@ func ParseCatalog(b []byte) (Catalog, error) {
 		}
 		display[l.Key] = f.DisplayNum
 		c.Lists = append(c.Lists, l)
+	}
+	if len(c.Lists) == 0 {
+		return Catalog{}, errors.New("catalog has no usable lists")
 	}
 	sort.SliceStable(c.Lists, func(i, j int) bool {
 		a, b := c.Lists[i], c.Lists[j]
