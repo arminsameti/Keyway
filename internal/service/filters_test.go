@@ -401,9 +401,9 @@ func placeEnv(t *testing.T) (*filterEnv, *connPlan, []string) {
 
 func TestPlaceFilterFiles(t *testing.T) {
 	e, pl, dirs := placeEnv(t)
-	blk, err := e.svc.placeFilterFiles(pl)
-	if err != nil {
-		t.Fatal(err)
+	blk, hash := e.svc.placeFilterFiles(pl)
+	if hash == "" {
+		t.Fatal("no hash returned")
 	}
 	wantActive := filepath.Join(e.svc.dir, "filters", "active", filters.SingBoxFile)
 	if blk == nil || blk.SingBoxPath != wantActive {
@@ -444,9 +444,11 @@ func TestPlaceFilterFilesRecordsHash(t *testing.T) {
 	if !e.svc.Filters().ApplyOnConnect {
 		t.Fatal("want apply-on-connect before the first placement")
 	}
-	if _, err := e.svc.placeFilterFiles(pl); err != nil {
-		t.Fatal(err)
+	_, hash := e.svc.placeFilterFiles(pl)
+	if !e.svc.Filters().ApplyOnConnect {
+		t.Error("placing alone must not count as applied; only a started engine does")
 	}
+	e.svc.commitConnectHash(hash)
 	if e.svc.Filters().ApplyOnConnect {
 		t.Error("placed files still reported as waiting for connect")
 	}
@@ -456,16 +458,16 @@ func TestPlaceFilterFilesNothingToPlace(t *testing.T) {
 	e, pl, dirs := placeEnv(t)
 	// Block ads off
 	e.setLists(t, false, e.custom("l1"))
-	if blk, err := e.svc.placeFilterFiles(pl); blk != nil || err != nil {
-		t.Fatalf("block ads off: %+v, %v", blk, err)
+	if blk, h := e.svc.placeFilterFiles(pl); blk != nil || h != "" {
+		t.Fatalf("block ads off: %+v, %q", blk, h)
 	}
 	// on again, but nothing compiled
 	e.setLists(t, true, e.custom("l1"))
 	e.svc.filtersMu.Lock()
 	e.svc.compiledSum = ""
 	e.svc.filtersMu.Unlock()
-	if blk, err := e.svc.placeFilterFiles(pl); blk != nil || err != nil {
-		t.Fatalf("nothing compiled: %+v, %v", blk, err)
+	if blk, h := e.svc.placeFilterFiles(pl); blk != nil || h != "" {
+		t.Fatalf("nothing compiled: %+v, %q", blk, h)
 	}
 	if _, err := os.Stat(filepath.Join(dirs[0], filters.XrayFile)); !os.IsNotExist(err) {
 		t.Errorf("a file was placed for nothing: %v", err)
@@ -480,5 +482,41 @@ func TestPreviewBlockHasNoSideEffects(t *testing.T) {
 	}
 	if _, err := os.Stat(blk.SingBoxPath); !os.IsNotExist(err) {
 		t.Errorf("preview copied a file: %v", err)
+	}
+}
+
+func TestPlaceFilterFilesFailureDoesNotBreakConnect(t *testing.T) {
+	e, pl, dirs := placeEnv(t)
+	if err := os.Remove(e.compiled(filters.XrayFile)); err != nil {
+		t.Fatal(err)
+	}
+	blk, hash := e.svc.placeFilterFiles(pl)
+	if blk != nil || hash != "" {
+		t.Fatalf("want no block and no hash, got %+v %q", blk, hash)
+	}
+	if e.svc.Filters().PlaceError == "" {
+		t.Error("PlaceError not set")
+	}
+	_ = dirs
+	// the next successful placement clears it
+	if err := filters.WriteAll(filepath.Join(e.svc.dir, "filters", "compiled"), e.svc.set); err != nil {
+		t.Fatal(err)
+	}
+	if blk, _ := e.svc.placeFilterFiles(pl); blk == nil {
+		t.Fatal("placement should succeed again")
+	}
+	if e.svc.Filters().PlaceError != "" {
+		t.Error("PlaceError not cleared")
+	}
+}
+
+func TestSingBoxCopyOnlyWithSingBoxStep(t *testing.T) {
+	e, pl, _ := placeEnv(t)
+	pl.steps, pl.installs = pl.steps[:1], pl.installs[:1] // Xray only
+	if blk, _ := e.svc.placeFilterFiles(pl); blk == nil {
+		t.Fatal("no block")
+	}
+	if _, err := os.Stat(e.svc.activeSingBoxPath()); !os.IsNotExist(err) {
+		t.Errorf("sing-box copy made without a sing-box step: %v", err)
 	}
 }

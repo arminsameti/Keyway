@@ -45,6 +45,7 @@ type FilterView struct {
 	Warn           bool              `json:"warn"`    // the set is big enough to slow connecting
 	Widened        []filters.Widened `json:"widened"`
 	MergeError     string            `json:"mergeError,omitempty"`
+	PlaceError     string            `json:"placeError,omitempty"` // the lists could not be placed at the last connect
 	ApplyOnConnect bool              `json:"applyOnConnect"`
 }
 
@@ -427,7 +428,7 @@ func (s *Service) Filters() FilterView {
 	s.filtersMu.Lock()
 	v := FilterView{
 		Domains: s.set.Len(), Warn: s.set.Len() > warnMergedDomains,
-		Widened: append([]filters.Widened{}, s.widened...), MergeError: s.mergeErr,
+		Widened: append([]filters.Widened{}, s.widened...), MergeError: s.mergeErr, PlaceError: s.placeErr,
 	}
 	v.ApplyOnConnect = running && s.compiledSum != "" && s.compiledSum != s.lastConnectHash
 	s.filtersMu.Unlock()
@@ -566,17 +567,24 @@ func copyFileAtomic(src, dst string) error {
 }
 
 // placeFilterFiles copies the compiled files to where each engine of the plan
-// reads them (see the Block rules in the engine configs) and records the
-// compiled hash for ApplyOnConnect. It returns nil, and places nothing, when
-// no filter rule is wanted: Block ads off, no enabled list, or nothing
-// compiled (an empty set never becomes a block rule).
+// reads them (see the Block rules in the engine configs). It returns nil, and
+// places nothing, when no filter rule is wanted: Block ads off, no enabled
+// list, or nothing compiled (an empty set never becomes a block rule).
+//
+// A placement problem never breaks connecting: it is logged, kept in
+// FilterView.PlaceError and the connect goes on with Block nil, so no config
+// references a file that may be missing. hash identifies the compiled set that
+// was placed; the caller records it with commitConnectHash once the engine has
+// started.
 //
 // Xray and V2Ray get the .dat in their asset directory at every step, since
 // each segment is checked on its own; only the segment that routes references
-// it. Mihomo gets the provider file in its home, sing-box an active copy.
-func (s *Service) placeFilterFiles(pl *connPlan) (*profile.BlockFiles, error) {
+// it. Mihomo gets the provider file in its home, sing-box an active copy (made
+// only when the plan has a sing-box step).
+func (s *Service) placeFilterFiles(pl *connPlan) (blk *profile.BlockFiles, hash string) {
 	if !s.store.Get().Settings.FiltersActive() {
-		return nil, nil
+		s.setPlaceError("")
+		return nil, ""
 	}
 	// compileMu first (as compileFilters does): a compile in progress would
 	// otherwise hand us a mix of old and new files.
@@ -585,13 +593,37 @@ func (s *Service) placeFilterFiles(pl *connPlan) (*profile.BlockFiles, error) {
 	s.filtersMu.Lock()
 	defer s.filtersMu.Unlock()
 	if s.compiledSum == "" {
-		return nil, nil
+		s.placeErr = ""
+		return nil, ""
 	}
+	if err := s.placeLocked(pl); err != nil {
+		s.log.Warn("filter lists not placed; connecting without them", "err", err)
+		s.placeErr = err.Error()
+		return nil, ""
+	}
+	s.placeErr = ""
+	return &profile.BlockFiles{SingBoxPath: s.activeSingBoxPath()}, s.compiledSum
+}
+
+func (s *Service) setPlaceError(msg string) {
+	s.filtersMu.Lock()
+	s.placeErr = msg
+	s.filtersMu.Unlock()
+}
+
+// commitConnectHash records the compiled set a started connection uses.
+func (s *Service) commitConnectHash(hash string) {
+	if hash == "" {
+		return
+	}
+	s.filtersMu.Lock()
+	s.lastConnectHash = hash
+	s.filtersMu.Unlock()
+}
+
+// placeLocked does the copies; filtersMu and compileMu are held.
+func (s *Service) placeLocked(pl *connPlan) error {
 	src := func(name string) string { return filepath.Join(s.compiledDir(), name) }
-	dst := s.activeSingBoxPath()
-	if err := copyFileAtomic(src(filters.SingBoxFile), dst); err != nil {
-		return nil, fmt.Errorf("place the filter lists: %w", err)
-	}
 	for k, st := range pl.steps {
 		if k >= len(pl.installs) {
 			break
@@ -602,16 +634,17 @@ func (s *Service) placeFilterFiles(pl *connPlan) (*profile.BlockFiles, error) {
 			dir, name = pl.installs[k].AssetDir, filters.XrayFile
 		case engine.NameMihomo:
 			dir, name = filepath.Join(filepath.Dir(pl.installs[k].AssetDir), "data"), filters.MihomoFile
+		case engine.NameSingBox:
+			dir, name = s.activeDir(), filters.SingBoxFile
 		default:
 			continue
 		}
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, fmt.Errorf("place the filter lists: %w", err)
+			return fmt.Errorf("place the filter lists: %w", err)
 		}
 		if err := copyFileAtomic(src(name), filepath.Join(dir, name)); err != nil {
-			return nil, fmt.Errorf("place the filter lists for %s: %w", st.Engine.DisplayName(), err)
+			return fmt.Errorf("place the filter lists for %s: %w", st.Engine.DisplayName(), err)
 		}
 	}
-	s.lastConnectHash = s.compiledSum
-	return &profile.BlockFiles{SingBoxPath: dst}, nil
+	return nil
 }

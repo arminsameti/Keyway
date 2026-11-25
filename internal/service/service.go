@@ -124,6 +124,7 @@ type Service struct {
 	set             filters.Set
 	widened         []filters.Widened
 	mergeErr        string
+	placeErr        string // why the lists were not placed at the last connect
 	compiledSum     string // hash of the compiled files
 	lastConnectHash string // hash of the compiled files at the last connect (set when the files are placed)
 }
