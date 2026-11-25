@@ -15,17 +15,6 @@ func TestFilterSettingsLoadOldData(t *testing.T) {
 	if len(d.Settings.FilterLists) != 0 || d.Settings.AllowedSites != "" {
 		t.Fatal("new fields should be empty")
 	}
-	d.Settings = DefaultSettings()
-	if d.FilterStatus == nil {
-		d.FilterStatus = map[string]FilterStatus{}
-	}
-	d.Settings.Normalize()
-	if d.FilterStatus == nil || d.Settings.FilterLists == nil {
-		t.Fatal("want non-nil collections")
-	}
-	if err := d.Settings.Validate(); err != nil {
-		t.Fatal(err)
-	}
 	if DefaultAppData().FilterStatus == nil {
 		t.Fatal("DefaultAppData must fill FilterStatus")
 	}

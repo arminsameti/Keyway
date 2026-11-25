@@ -75,6 +75,33 @@ func TestOpenLoadsDataWrittenBeforeGroupsUnchanged(t *testing.T) {
 	}
 }
 
+func TestOpenLoadsDataWrittenBeforeFilterLists(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, fileName), []byte(legacyData), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Warning() != "" {
+		t.Fatalf("old data was set aside: %s", s.Warning())
+	}
+	d := s.Get()
+	if d.FilterStatus == nil {
+		t.Error("FilterStatus is nil after load")
+	}
+	if d.Settings.FilterLists == nil || len(d.Settings.FilterLists) != 0 {
+		t.Errorf("FilterLists = %#v, want an empty list", d.Settings.FilterLists)
+	}
+	if err := d.Settings.Validate(); err != nil {
+		t.Errorf("Validate: %v", err)
+	}
+	if _, err := s.Update(func(*models.AppData) error { return nil }); err != nil {
+		t.Fatalf("re-save: %v", err)
+	}
+}
+
 func TestGroupsAreReconciledOnEveryUpdate(t *testing.T) {
 	s, err := Open(t.TempDir())
 	if err != nil {
