@@ -709,9 +709,12 @@ func splitTesterList(v string) []string {
 }
 
 // hostAllowed reports whether the allowlist covers host (the entry or a parent).
+// Entries are normalized exactly as compileFilters does, so the tester and the
+// engines agree.
 func hostAllowed(allowed, host string) bool {
 	for _, line := range strings.Split(allowed, "\n") {
-		if line = strings.TrimSpace(line); line != "" && (host == line || strings.HasSuffix(host, "."+line)) {
+		line, ok := filters.NormalizeHost(strings.TrimSpace(line))
+		if ok && (host == line || strings.HasSuffix(host, "."+line)) {
 			return true
 		}
 	}

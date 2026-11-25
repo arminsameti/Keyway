@@ -549,6 +549,24 @@ func TestTestRouteFilterFirst(t *testing.T) {
 	}
 }
 
+func TestTestRouteAllowlistUsesCompileNormalization(t *testing.T) {
+	e := newFilterEnv(t)
+	e.body.Store("||xn--bcher-kva.de^\n")
+	e.setLists(t, true, e.custom("l1"))
+	if err := e.svc.RefreshFilters(context.Background(), "l1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.store.Update(func(d *models.AppData) error { d.Settings.AllowedSites = "bücher.de"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.svc.compileFilters(); err != nil {
+		t.Fatal(err)
+	}
+	if r := e.svc.TestRoute("bücher.de", 443, nil); r.Outbound == "block" || !r.AllowedBy {
+		t.Fatalf("got %+v, want allowed like the compiled set", r)
+	}
+}
+
 func TestTestRouteBlockedSitesAndModes(t *testing.T) {
 	svc := newTestService(t)
 	set := func(f func(*models.Settings)) {
