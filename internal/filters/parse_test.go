@@ -3,6 +3,7 @@ package filters
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParse(t *testing.T) {
@@ -132,5 +133,22 @@ func TestPunycodeRFC3492(t *testing.T) {
 		if got := punycodeEncode(in); got != want {
 			t.Errorf("punycodeEncode(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestNormalizeHostHostileLongLabel(t *testing.T) {
+	var b strings.Builder
+	for i := 0; i < 100000; i++ {
+		b.WriteRune(rune(0x4e00 + i%20000))
+	}
+	start := time.Now()
+	if got, ok := NormalizeHost(b.String()); ok {
+		t.Errorf("accepted a 100k-rune label: %q", got[:20])
+	}
+	if _, ok := NormalizeHost("a." + b.String()[:200]); ok {
+		t.Error("accepted a 200-rune label")
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("took %v, want fast rejection", d)
 	}
 }

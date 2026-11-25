@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"unicode/utf8"
 )
 
 // Parsed is the domain content of one list. Suffix entries match the domain
@@ -120,6 +121,11 @@ func (p *Parsed) addHostsLine(line string) bool {
 // non-ASCII labels. It rejects IP literals, empty labels, labels over 63
 // bytes, names over 253 and any character outside [a-z0-9-_].
 func NormalizeHost(s string) (string, bool) {
+	// Bound the input before any per-rune work: a hostile list can carry a
+	// megabyte-long line, and punycode is quadratic in its length.
+	if len(s) > 253*4+1 {
+		return "", false
+	}
 	s = strings.TrimSuffix(strings.ToLower(s), ".")
 	if s == "" || net.ParseIP(s) != nil {
 		return "", false
@@ -131,6 +137,9 @@ func NormalizeHost(s string) (string, bool) {
 		}
 		for j := 0; j < len(l); j++ {
 			if l[j] >= 0x80 {
+				if utf8.RuneCountInString(l) > 63 {
+					return "", false
+				}
 				l = "xn--" + punycodeEncode(l)
 				break
 			}
