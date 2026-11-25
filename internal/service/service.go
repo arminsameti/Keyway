@@ -415,6 +415,9 @@ func (s *Service) ConfigJSON() ([]byte, error) {
 type SettingsResult struct {
 	ReconnectRequired bool `json:"reconnectRequired"`
 	RestartRequired   bool `json:"restartRequired"`
+	// SniffingTurnedOn: Keyway switched sniffing on because ad blocking in TUN mode needs it.
+	SniffingTurnedOn bool   `json:"sniffingTurnedOn"`
+	Warning          string `json:"warning,omitempty"`
 }
 
 // configRelevant blanks the fields that do not influence the generated xray config.
@@ -427,10 +430,11 @@ func configRelevant(st models.Settings) models.Settings {
 // UpdateSettings validates and persists new settings.
 func (s *Service) UpdateSettings(ctx context.Context, in models.Settings) (SettingsResult, error) {
 	in.Normalize()
+	old := s.store.Get().Settings
+	turnedOn, warn := models.EnsureTUNSniffing(old, &in)
 	if err := in.Validate(); err != nil {
 		return SettingsResult{}, err
 	}
-	old := s.store.Get().Settings
 	if _, err := s.store.Update(func(d *models.AppData) error {
 		d.Settings = in
 		return nil
@@ -440,7 +444,7 @@ func (s *Service) UpdateSettings(ctx context.Context, in models.Settings) (Setti
 	s.torFlag.Store(in.TorEnabled)
 	s.setDNS(in)
 	s.filtersChanged(ctx, old, in)
-	res := SettingsResult{RestartRequired: old.APIPort != in.APIPort}
+	res := SettingsResult{RestartRequired: old.APIPort != in.APIPort, SniffingTurnedOn: turnedOn, Warning: warn}
 	if old.TorEnabled && !in.TorEnabled && strings.Contains(s.current().Label, engine.TorDisplayName) && s.run.IsRunning() {
 		if err := s.Disconnect(ctx); err != nil {
 			s.log.Warn("disconnect after turning Tor off", "err", err)

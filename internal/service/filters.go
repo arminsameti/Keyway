@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -647,4 +648,153 @@ func (s *Service) placeLocked(pl *connPlan) error {
 		}
 	}
 	return nil
+}
+
+// ---- rule tester and custom-URL preview ----
+
+// TestRouteResult is the answer of the rule tester: the route match plus which
+// filter list blocked the host, or whether the allowlist let it through.
+type TestRouteResult struct {
+	models.RouteMatch
+	FilterList string `json:"filterList,omitempty"`
+	AllowedBy  bool   `json:"allowedBy,omitempty"`
+}
+
+// TestRoute answers what happens to a destination, in the order the engines
+// decide: filter lists (after the allowlist), BlockedSites, then the routing
+// rules (nil means the rules the current routing mode generates).
+func (s *Service) TestRoute(host string, port int, rules []models.RouteRule) TestRouteResult {
+	st := s.store.Get().Settings
+	var res TestRouteResult
+	if norm, ok := filters.NormalizeHost(strings.TrimSpace(host)); ok && st.FiltersActive() {
+		s.filtersMu.Lock()
+		set := s.set
+		s.filtersMu.Unlock()
+		if hostAllowed(st.AllowedSites, norm) {
+			if _, found := s.listContaining(st, norm); found {
+				res.AllowedBy = true
+			}
+		} else if entry, ok := set.Match(norm); ok {
+			name, _ := s.listContaining(st, norm)
+			res.RouteMatch = models.RouteMatch{Outbound: "block", Entry: entry}
+			res.FilterList = name
+			return res
+		}
+	}
+	var chain []models.RouteRule
+	if st.BlockAds || st.RoutingMode == "custom" {
+		blocked := splitTesterList(st.BlockedSites)
+		if st.BlockAds && len(blocked) == 0 {
+			blocked = []string{"geosite:category-ads-all"}
+		}
+		if len(blocked) > 0 {
+			chain = append(chain, models.RouteRule{ID: "blocked-sites", Enabled: true, Entries: blocked, Outbound: "block"})
+		}
+	}
+	if rules == nil {
+		rules = models.EffectiveRules(st)
+	}
+	res.RouteMatch = models.MatchRoute(append(chain, rules...), host, port)
+	return res
+}
+
+func splitTesterList(v string) []string {
+	var out []string
+	for _, e := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == '\n' || r == '\r' }) {
+		if e = strings.TrimSpace(e); e != "" {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// hostAllowed reports whether the allowlist covers host (the entry or a parent).
+func hostAllowed(allowed, host string) bool {
+	for _, line := range strings.Split(allowed, "\n") {
+		if line = strings.TrimSpace(line); line != "" && (host == line || strings.HasSuffix(host, "."+line)) {
+			return true
+		}
+	}
+	return false
+}
+
+func parsedHas(m map[string]struct{}, host string) bool {
+	for h := host; h != ""; {
+		if _, ok := m[h]; ok {
+			return true
+		}
+		i := strings.IndexByte(h, '.')
+		if i < 0 {
+			break
+		}
+		h = h[i+1:]
+	}
+	return false
+}
+
+// listContaining re-parses the enabled lists' raw files, in the user's order,
+// and names the first one that lists host. It stops at the first hit and holds
+// no lock, so a lookup never stalls a refresh.
+func (s *Service) listContaining(st models.Settings, host string) (string, bool) {
+	for _, l := range st.EnabledFilterLists() {
+		raw, err := s.rawPath(l.ID)
+		if err != nil {
+			continue
+		}
+		f, err := os.Open(raw)
+		if err != nil {
+			continue
+		}
+		p, err := filters.Parse(f)
+		f.Close()
+		if err != nil {
+			continue
+		}
+		if parsedHas(p.AllowSuffix, host) {
+			continue
+		}
+		if _, ok := p.AllowExact[host]; ok {
+			continue
+		}
+		if parsedHas(p.Suffix, host) {
+			return l.Name, true
+		}
+		if _, ok := p.Exact[host]; ok {
+			return l.Name, true
+		}
+	}
+	return "", false
+}
+
+// FilterPreview is what a custom list URL would contribute, without saving it.
+type FilterPreview struct {
+	Domains int      `json:"domains"`
+	Skipped int      `json:"skipped"`
+	Sample  []string `json:"sample"`
+}
+
+// PreviewFilterURL downloads and parses a custom list URL and reports counts
+// and a sample, storing nothing.
+func (s *Service) PreviewFilterURL(ctx context.Context, rawURL string) (FilterPreview, error) {
+	resp, err := fetchList(ctx, listFetch{URL: strings.TrimSpace(rawURL), MaxBytes: maxListBytes}, s.fetchGuard)
+	if err != nil {
+		return FilterPreview{}, err
+	}
+	p, err := filters.Parse(bytes.NewReader(resp.Body))
+	if err != nil {
+		return FilterPreview{}, &models.ValidationError{Msg: "that URL is not a usable list: " + err.Error()}
+	}
+	all := make([]string, 0, len(p.Suffix)+len(p.Exact))
+	for d := range p.Suffix {
+		all = append(all, d)
+	}
+	for d := range p.Exact {
+		all = append(all, d)
+	}
+	sort.Strings(all)
+	prev := FilterPreview{Domains: len(all), Skipped: p.Skipped, Sample: all}
+	if len(all) > 5 {
+		prev.Sample = all[:5]
+	}
+	return prev, nil
 }

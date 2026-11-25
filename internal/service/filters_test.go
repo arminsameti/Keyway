@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -518,5 +519,103 @@ func TestSingBoxCopyOnlyWithSingBoxStep(t *testing.T) {
 	}
 	if _, err := os.Stat(e.svc.activeSingBoxPath()); !os.IsNotExist(err) {
 		t.Errorf("sing-box copy made without a sing-box step: %v", err)
+	}
+}
+
+func TestTestRouteFilterFirst(t *testing.T) {
+	e := newFilterEnv(t)
+	e.body.Store("||ads.example.com^\n||tracker.net^\n")
+	l := e.custom("l1")
+	l.Name = "AdGuard DNS filter"
+	e.setLists(t, true, l)
+	if err := e.svc.RefreshFilters(context.Background(), "l1"); err != nil {
+		t.Fatal(err)
+	}
+	direct := []models.RouteRule{{ID: "d", Enabled: true, Entries: []string{"ads.example.com"}, Outbound: "direct"}}
+	r := e.svc.TestRoute("ads.example.com", 443, direct)
+	if r.Outbound != "block" || r.FilterList != "AdGuard DNS filter" || r.AllowedBy {
+		t.Fatalf("got %+v", r)
+	}
+	// Allowlisted: falls through to the rules.
+	if _, err := e.svc.store.Update(func(d *models.AppData) error { d.Settings.AllowedSites = "ads.example.com"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.svc.compileFilters(); err != nil {
+		t.Fatal(err)
+	}
+	r = e.svc.TestRoute("ads.example.com", 443, direct)
+	if r.Outbound != "direct" || !r.AllowedBy || r.RuleID != "d" || r.FilterList != "" {
+		t.Fatalf("allowlisted: got %+v", r)
+	}
+}
+
+func TestTestRouteBlockedSitesAndModes(t *testing.T) {
+	svc := newTestService(t)
+	set := func(f func(*models.Settings)) {
+		if _, err := svc.store.Update(func(d *models.AppData) error { f(&d.Settings); return nil }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set(func(s *models.Settings) { s.BlockAds = true; s.BlockedSites = "bad.com" })
+	if r := svc.TestRoute("x.bad.com", 80, nil); r.Outbound != "block" || r.RuleID != "blocked-sites" || r.Entry != "bad.com" {
+		t.Fatalf("got %+v", r)
+	}
+	// Block ads off in a non-custom mode: BlockedSites is not applied.
+	set(func(s *models.Settings) { s.BlockAds = false })
+	if r := svc.TestRoute("bad.com", 80, nil); r.Outbound == "block" {
+		t.Fatalf("got %+v", r)
+	}
+	// Custom mode applies it regardless.
+	set(func(s *models.Settings) { s.RoutingMode = "custom"; s.DirectSites = "keep.com" })
+	if r := svc.TestRoute("bad.com", 80, nil); r.Outbound != "block" {
+		t.Fatalf("custom: %+v", r)
+	}
+	if r := svc.TestRoute("keep.com", 80, nil); r.Outbound != "direct" || r.RuleID != "mode-direct" {
+		t.Fatalf("custom direct: %+v", r)
+	}
+	// Block ads with empty BlockedSites: geosite default, unknown offline.
+	set(func(s *models.Settings) { s.RoutingMode = "global"; s.BlockAds = true; s.BlockedSites = "" })
+	r := svc.TestRoute("example.com", 80, nil)
+	if r.Outbound == "block" || len(r.Unknown) == 0 || r.Unknown[0] != "geosite:category-ads-all" {
+		t.Fatalf("default geosite: %+v", r)
+	}
+}
+
+func TestPreviewFilterURL(t *testing.T) {
+	e := newFilterEnv(t)
+	e.body.Store("||g.com^\n||f.com^\n||e.com^\n||d.com^\n||c.com^\n||b.com^\n||a.com^\n!x\n/regex/\n")
+	p, err := e.svc.PreviewFilterURL(context.Background(), e.srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Domains != 7 || p.Skipped != 1 || !reflect.DeepEqual(p.Sample, []string{"a.com", "b.com", "c.com", "d.com", "e.com"}) {
+		t.Fatalf("got %+v", p)
+	}
+	e.body.Store("<html>nope</html>")
+	if _, err := e.svc.PreviewFilterURL(context.Background(), e.srv.URL); err == nil {
+		t.Fatal("want error for an HTML page")
+	}
+	if _, err := e.svc.PreviewFilterURL(context.Background(), "http://example.com/x"); err == nil {
+		t.Fatal("want error for http")
+	}
+}
+
+func TestUpdateSettingsTurnsSniffingOn(t *testing.T) {
+	svc := newTestService(t)
+	in := svc.store.Get().Settings
+	in.BlockAds, in.Sniffing = true, false
+	in.TUN.Enabled = true
+	res, err := svc.UpdateSettings(context.Background(), in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.SniffingTurnedOn || res.Warning != "" || !svc.store.Get().Settings.Sniffing {
+		t.Fatalf("res=%+v sniffing=%v", res, svc.store.Get().Settings.Sniffing)
+	}
+	in = svc.store.Get().Settings
+	in.Sniffing = false
+	res, err = svc.UpdateSettings(context.Background(), in)
+	if err != nil || res.SniffingTurnedOn || res.Warning != models.SniffingOffWarningMsg || svc.store.Get().Settings.Sniffing {
+		t.Fatalf("res=%+v err=%v", res, err)
 	}
 }

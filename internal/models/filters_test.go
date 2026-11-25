@@ -106,3 +106,45 @@ func TestCloneCopiesFilterLists(t *testing.T) {
 		t.Fatal("clone aliases the original")
 	}
 }
+
+func tunSettings(tun, blockAds, sniffing bool, lists int) Settings {
+	s := Settings{BlockAds: blockAds, Sniffing: sniffing}
+	s.TUN.Enabled = tun
+	for i := 0; i < lists; i++ {
+		s.FilterLists = append(s.FilterLists, FilterList{ID: string(rune('a' + i)), Enabled: true})
+	}
+	return s
+}
+
+func TestEnsureTUNSniffing(t *testing.T) {
+	const on = "Ad blocking in TUN mode needs sniffing to see site names, so Keyway turned it on."
+	const warnMsg = "With sniffing off, ad blocking won't work in TUN mode."
+	cases := []struct {
+		name         string
+		old, in      Settings
+		turnedOn     bool
+		warn         string
+		wantSniffing bool
+	}{
+		{"TUN turned on with block ads", tunSettings(false, true, false, 0), tunSettings(true, true, false, 0), true, "", true},
+		{"block ads turned on in TUN", tunSettings(true, false, false, 0), tunSettings(true, true, false, 0), true, "", true},
+		{"first list enabled in TUN", tunSettings(true, true, true, 0), tunSettings(true, true, false, 1), true, "", true},
+		{"user turns sniffing off", tunSettings(true, true, true, 0), tunSettings(true, true, false, 0), false, warnMsg, false},
+		{"TUN off", tunSettings(false, false, false, 0), tunSettings(false, true, false, 0), false, "", false},
+		{"unrelated save, sniffing already off, already active", tunSettings(true, true, false, 1), tunSettings(true, true, false, 1), false, "", false},
+		{"second list added, already active", tunSettings(true, true, false, 1), tunSettings(true, true, false, 2), false, "", false},
+		{"sniffing already on", tunSettings(false, true, true, 0), tunSettings(true, true, true, 0), false, "", true},
+		{"block ads off", tunSettings(true, false, false, 0), tunSettings(true, false, false, 0), false, "", false},
+		{"TUN on but block ads off, list enabled", tunSettings(true, false, false, 0), tunSettings(true, false, false, 1), false, "", false},
+	}
+	for _, c := range cases {
+		in := c.in
+		turned, warn := EnsureTUNSniffing(c.old, &in)
+		if turned != c.turnedOn || warn != c.warn || in.Sniffing != c.wantSniffing {
+			t.Errorf("%s: turned=%v warn=%q sniffing=%v", c.name, turned, warn, in.Sniffing)
+		}
+	}
+	if SniffingTurnedOnMsg != on {
+		t.Errorf("copy = %q", SniffingTurnedOnMsg)
+	}
+}

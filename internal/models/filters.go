@@ -124,3 +124,33 @@ func (s Settings) validateFilters(add func(string, ...any)) {
 		}
 	}
 }
+
+// User-facing copy for the TUN sniffing rule.
+const (
+	SniffingTurnedOnMsg   = "Ad blocking in TUN mode needs sniffing to see site names, so Keyway turned it on."
+	SniffingOffWarningMsg = "With sniffing off, ad blocking won't work in TUN mode."
+)
+
+func adBlockingInTUN(s Settings) bool { return s.TUN.Enabled && s.BlockAds }
+
+// EnsureTUNSniffing turns Sniffing on in `in` when ad blocking newly becomes
+// active in TUN mode (Block ads or TUN just turned on, or the first filter
+// list enabled), because domain blocking needs sniffing there. When the user
+// turns sniffing off themselves while ad blocking is active in TUN mode, it
+// leaves it off and returns a warning. Any other save changes nothing.
+func EnsureTUNSniffing(old Settings, in *Settings) (turnedOn bool, warn string) {
+	if !adBlockingInTUN(*in) {
+		return false, ""
+	}
+	if !in.Sniffing {
+		newly := !adBlockingInTUN(old) || (len(old.EnabledFilterLists()) == 0 && len(in.EnabledFilterLists()) > 0)
+		if newly {
+			in.Sniffing = true
+			return true, ""
+		}
+		if old.Sniffing {
+			return false, SniffingOffWarningMsg
+		}
+	}
+	return false, ""
+}
