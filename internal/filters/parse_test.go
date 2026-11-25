@@ -40,6 +40,13 @@ func TestParse(t *testing.T) {
 		{"||*.example.com^", skip, ""},
 		{"example.com##.banner", skip, ""},
 		{"||example.com/path", skip, ""},
+		{"|piwik.", skip, ""},
+		{"com", skip, ""},
+		{"||com^", skip, ""},
+		{"@@||com^", skip, ""},
+		{"-events-collector.spot.im^", skip, ""},
+		{"ads-.example.com", skip, ""},
+		{"a-b.example.com", sfx, "a-b.example.com"},
 	}
 	for _, c := range cases {
 		t.Run(c.line, func(t *testing.T) {
@@ -114,7 +121,7 @@ func TestNormalizeHost(t *testing.T) {
 	}
 	for _, in := range []string{
 		"", ".", "1.2.3.4", "::1", "[::1]", "a..b", ".a.com", "a.com/x", "a b.com",
-		"*.a.com", "a.com:80", long + ".com", strings.Repeat("a.", 130) + "com",
+		"*.a.com", "a.com:80", "com", "piwik", "-a.example.com", "a-.example.com", "a.-b.com", long + ".com", strings.Repeat("a.", 130) + "com",
 	} {
 		if got, good := NormalizeHost(in); good {
 			t.Errorf("NormalizeHost(%q) = %q, want rejection", in, got)

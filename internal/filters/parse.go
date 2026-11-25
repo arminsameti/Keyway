@@ -119,7 +119,8 @@ func (p *Parsed) addHostsLine(line string) bool {
 
 // NormalizeHost lowercases s, trims a trailing dot and punycode-encodes
 // non-ASCII labels. It rejects IP literals, empty labels, labels over 63
-// bytes, names over 253 and any character outside [a-z0-9-_].
+// bytes, names over 253, any character outside [a-z0-9-_], single-label names
+// (a bare TLD would block a whole TLD) and labels that start or end with "-".
 func NormalizeHost(s string) (string, bool) {
 	// Bound the input before any per-rune work: a hostile list can carry a
 	// megabyte-long line, and punycode is quadratic in its length.
@@ -131,6 +132,9 @@ func NormalizeHost(s string) (string, bool) {
 		return "", false
 	}
 	labels := strings.Split(s, ".")
+	if len(labels) < 2 {
+		return "", false
+	}
 	for i, l := range labels {
 		if l == "" {
 			return "", false
@@ -145,6 +149,9 @@ func NormalizeHost(s string) (string, bool) {
 			}
 		}
 		if len(l) > 63 {
+			return "", false
+		}
+		if l[0] == '-' || l[len(l)-1] == '-' {
 			return "", false
 		}
 		for j := 0; j < len(l); j++ {
