@@ -683,6 +683,9 @@ public struct FilterView: Decodable, Equatable, Sendable {
     public var applyOnConnect = false
     public init() {}
 
+    /// True while an enabled list still waits for its first download result.
+    public var needsPolling: Bool { lists.contains { $0.list.enabled && !$0.hasStatus } }
+
     enum CodingKeys: String, CodingKey { case lists, domains, warn, widened, mergeError, placeError, applyOnConnect }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)

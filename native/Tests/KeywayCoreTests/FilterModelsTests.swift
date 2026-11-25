@@ -26,6 +26,10 @@ final class FilterModelsTests: XCTestCase {
         XCTAssertEqual(b.status.lastError, "download failed: 404")
         XCTAssertTrue(b.hasStatus, "an error is a status")
         XCTAssertFalse(v.lists[2].hasStatus, "no download yet")
+        XCTAssertTrue(v.needsPolling, "the third list is enabled and has no status yet")
+        var settled = v
+        settled.lists[2].list.enabled = false
+        XCTAssertFalse(settled.needsPolling)
         XCTAssertEqual(v.domains, 94000)
         XCTAssertTrue(v.warn)
         XCTAssertTrue(v.applyOnConnect)

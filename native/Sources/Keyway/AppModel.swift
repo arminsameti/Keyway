@@ -402,16 +402,24 @@ final class AppModel {
 
     /// Saves a changed list selection or allowlist right away, then follows the downloads.
     func saveFilters(_ s: AppSettings) {
-        guard let client, !filterSaving else { return }
+        Task { _ = await saveFiltersNow(s) }
+    }
+
+    /// Like saveFilters, but waits for the result: nil on success, else the error text.
+    func saveFiltersNow(_ s: AppSettings) async -> String? {
+        guard let client, !filterSaving else { return "Saving is already in progress." }
         filterSaving = true
+        defer { filterSaving = false }
         settings = s
-        Task {
-            defer { filterSaving = false }
-            do { show(try await client.saveSettings(s)) } catch { errorMessage = error.localizedDescription }
-            await refreshState()
-            await refreshFilterView()
-            startFilterPolling()
+        var failure: String?
+        do { show(try await client.saveSettings(s)) } catch {
+            failure = error.localizedDescription
+            errorMessage = failure
         }
+        await refreshState()
+        await refreshFilterView()
+        if filterView.needsPolling { startFilterPolling() }
+        return failure
     }
 
     func refreshFilterView() async {
@@ -438,7 +446,7 @@ final class AppModel {
         filterPollTask = Task { [weak self] in
             let deadline = ContinuousClock.now + .seconds(60)
             while !Task.isCancelled, ContinuousClock.now < deadline {
-                guard let self, self.filterView.lists.contains(where: { $0.list.enabled && !$0.hasStatus }) else { return }
+                guard let self, self.filterView.needsPolling else { return }
                 try? await Task.sleep(for: .seconds(1))
                 if Task.isCancelled { return }
                 await self.refreshFilterView()

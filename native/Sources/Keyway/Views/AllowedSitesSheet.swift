@@ -6,6 +6,7 @@ struct AllowedSitesSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
+    @State private var saveError: String?
 
     private var dirty: Bool { text != model.settings.allowedSites }
 
@@ -27,16 +28,23 @@ struct AllowedSitesSheet: View {
                     }
                 }
             }
+            if let saveError {
+                Text(saveError).font(.system(size: 11)).foregroundStyle(.red)
+            }
             HStack {
                 Spacer()
                 Button("Revert") { text = model.settings.allowedSites }.disabled(!dirty)
-                Button("Save") {
-                    var s = model.settings
-                    s.allowedSites = text
-                    model.saveFilters(s)
+                Button("Save") { Task { _ = await save() } }
+                    .disabled(!dirty || model.filterSaving)
+                // Done keeps unsaved edits: it saves first and stays open if that fails.
+                Button("Done") {
+                    Task {
+                        if !dirty { dismiss(); return }
+                        if await save() { dismiss() }
+                    }
                 }
-                .disabled(!dirty || model.filterSaving)
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+                .keyboardShortcut(.defaultAction)
+                .disabled(model.filterSaving)
             }
         }
         .padding(16)
@@ -45,5 +53,13 @@ struct AllowedSitesSheet: View {
         .task { await model.refreshFilterView() }
         // the backend tidies the list (lowercase, one per line); show what it kept
         .onChange(of: model.filterSaving) { _, saving in if !saving { text = model.settings.allowedSites } }
+    }
+
+    /// Saves the text as the allowlist; false (with the error shown) when the backend refused it.
+    private func save() async -> Bool {
+        var s = model.settings
+        s.allowedSites = text
+        saveError = await model.saveFiltersNow(s)
+        return saveError == nil
     }
 }
