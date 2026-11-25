@@ -8,7 +8,8 @@ struct FilterListsSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
-    @State private var tab = 0 // a catalog group id, or customTab
+    @State private var tab = customTab // a catalog group id, or customTab (also the choice before the catalog loads)
+    @State private var pickedTab = false // the user chose a tab, so a finished load must not move them
     @State private var customURL = ""
     @State private var previewing = false
     @State private var previewNote = ""
@@ -33,13 +34,22 @@ struct FilterListsSheet: View {
         }
         .frame(width: 680, height: 640)
         .task {
-            if tab == 0, let first = groups.first { tab = first.id }
+            selectFirstGroup()
             await model.refreshFilterView()
             model.startFilterPolling()
             await model.loadCatalog()
-            if tab == 0 { tab = groups.first?.id ?? Self.customTab }
+            selectFirstGroup()
         }
         .onDisappear { model.stopFilterPolling() }
+    }
+
+    /// Moves from the not-yet-loaded state to the first group, unless the user already picked a tab.
+    private func selectFirstGroup() {
+        if !pickedTab, let first = groups.first { tab = first.id }
+    }
+
+    private func retryCatalog() {
+        Task { await model.loadCatalog(); selectFirstGroup() }
     }
 
     // MARK: header
@@ -48,7 +58,7 @@ struct FilterListsSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Filter lists").font(.system(size: 15, weight: .bold)).accessibilityAddTraits(.isHeader)
             TextField("Search lists", text: $search).textFieldStyle(.roundedBorder)
-            Picker("Group", selection: $tab) {
+            Picker("Group", selection: Binding(get: { tab }, set: { tab = $0; pickedTab = true })) {
                 ForEach(groups) { Text($0.name).tag($0.id) }
                 Text("Custom").tag(Self.customTab)
             }
@@ -63,9 +73,11 @@ struct FilterListsSheet: View {
     @ViewBuilder private var content: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if let err = model.catalogError, model.catalog == nil, tab != Self.customTab, search.isEmpty {
+                if let err = model.catalogError, model.catalog == nil {
                     catalogFailure(err)
-                } else if tab == Self.customTab && search.isEmpty {
+                    Divider()
+                }
+                if tab == Self.customTab && search.isEmpty {
                     customTab
                 } else {
                     ForEach(catalogRows) { item in
@@ -113,7 +125,7 @@ struct FilterListsSheet: View {
         VStack(spacing: 10) {
             Text("Couldn't load AdGuard's list catalog").font(.system(size: 13, weight: .semibold))
             Text(err).font(.system(size: 11)).foregroundStyle(Palette.secondary).multilineTextAlignment(.center)
-            Button("Retry") { Task { await model.loadCatalog() } }.disabled(model.catalogLoading)
+            Button("Retry", action: retryCatalog).disabled(model.catalogLoading)
             Text("You can still add a list by URL in the Custom tab.").font(.system(size: 11)).foregroundStyle(Palette.secondary)
         }
         .frame(maxWidth: .infinity).padding(30)
