@@ -1,0 +1,226 @@
+{
+ "filters": [
+  {
+   "filterKey": "hagezi_ultimate",
+   "filterId": 49,
+   "groupId": 1,
+   "name": "HaGeZi's Ultimate Blocklist",
+   "deprecated": false,
+   "description": "Ultimate Sweeper - Strictly cleans the Internet and protects your privacy! Blocks Ads, Affiliate, Tracking (+Referral), Metrics, Telemetry, Phishing, Malware, Scam, Free Hoster, Fake, Coins and other Crap.",
+   "tags": [
+    1,
+    111
+   ],
+   "languages": [],
+   "version": "1.0.34.4",
+   "homepage": "https://github.com/hagezi/dns-blocklists",
+   "expires": 345600,
+   "displayNumber": 4,
+   "downloadUrl": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_49.txt",
+   "subscriptionUrl": "https://cdn.jsdelivr.net/gh/hagezi/dns-blocklists@latest/adblock/ultimate.txt",
+   "timeAdded": "2023-09-18T16:53:47+0000",
+   "timeUpdated": "2026-11-25T18:12:37+0000"
+  },
+  {
+   "filterKey": "NOR_dandelion_sprouts_anti_malware_list",
+   "filterId": 13,
+   "groupId": 3,
+   "name": "NOR: Dandelion Sprouts nordiske filtre",
+   "deprecated": false,
+   "description": "Dandelion Sprout's Nordic Filters (DNS filtering in AdGuard Home, AdGuard for Android, and AdGuard for Windows)",
+   "tags": [
+    3,
+    100
+   ],
+   "languages": [],
+   "version": "1.0.14.84",
+   "homepage": "https://github.com/DandelionSprout/adfilt",
+   "expires": 345600,
+   "displayNumber": 4,
+   "downloadUrl": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_13.txt",
+   "subscriptionUrl": "https://raw.githubusercontent.com/DandelionSprout/adfilt/master/NorwegianExperimentalList%20alternate%20versions/NordicFiltersAdGuardHome.txt",
+   "timeAdded": "2021-06-02T13:09:03+0000",
+   "timeUpdated": "2026-11-25T23:10:23+0000"
+  },
+  {
+   "filterKey": "scam_blocklist_by_durablenapkin",
+   "filterId": 10,
+   "groupId": 4,
+   "name": "Scam Blocklist by DurableNapkin",
+   "deprecated": false,
+   "description": "List for blocking untrustworthy websites",
+   "tags": [
+    2
+   ],
+   "languages": [],
+   "version": "1.0.22.69",
+   "homepage": "https://github.com/durablenapkin/scamblocklist",
+   "expires": 345600,
+   "displayNumber": 4,
+   "downloadUrl": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_10.txt",
+   "subscriptionUrl": "https://raw.githubusercontent.com/durablenapkin/scamblocklist/master/adguard.txt",
+   "timeAdded": "2021-06-02T13:09:03+0000",
+   "timeUpdated": "2026-11-25T06:20:40+0000"
+  },
+  {
+   "filterKey": "no_google",
+   "filterId": 37,
+   "groupId": 2,
+   "name": "No Google",
+   "deprecated": false,
+   "description": "Completely blocks all Google-related domains (including YouTube).",
+   "tags": [
+    4
+   ],
+   "languages": [],
+   "version": "1.0.14.74",
+   "homepage": "https://github.com/nickspaargaren/no-google",
+   "expires": 345600,
+   "displayNumber": 4,
+   "downloadUrl": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_37.txt",
+   "subscriptionUrl": "https://raw.githubusercontent.com/nickspaargaren/no-google/master/pihole-google-adguard.txt",
+   "timeAdded": "2022-11-09T09:43:37+0000",
+   "timeUpdated": "2026-11-24T09:12:51+0000"
+  },
+  {
+   "filterKey": "adguard_dns_filter",
+   "filterId": 1,
+   "groupId": 1,
+   "name": "AdGuard DNS filter",
+   "deprecated": false,
+   "description": "List composed of several filters (AdGuard Base filter, Social Media filter, Tracking Protection filter, Mobile Ads filter, EasyList and EasyPrivacy) and simplified specifically to be better compatible with DNS-level ad blocking",
+   "tags": [
+    1
+   ],
+   "languages": [],
+   "version": "1.0.87.81",
+   "homepage": "https://github.com/AdguardTeam/AdGuardSDNSFilter",
+   "expires": 345600,
+   "displayNumber": 1,
+   "downloadUrl": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt",
+   "subscriptionUrl": "https://adguardteam.github.io/AdGuardSDNSFilter/Filters/filter.txt",
+   "timeAdded": "2014-06-30T07:56:55+0000",
+   "timeUpdated": "2026-11-25T22:10:27+0000"
+  },
+  {
+   "filterKey": "deprecated_example_list",
+   "filterId": 999001,
+   "groupId": 2,
+   "name": "No Google",
+   "deprecated": true,
+   "description": "Completely blocks all Google-related domains (including YouTube).",
+   "tags": [
+    4
+   ],
+   "languages": [],
+   "version": "1.0.14.74",
+   "homepage": "https://github.com/nickspaargaren/no-google",
+   "expires": 345600,
+   "displayNumber": 999,
+   "downloadUrl": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_37.txt",
+   "subscriptionUrl": "https://raw.githubusercontent.com/nickspaargaren/no-google/master/pihole-google-adguard.txt",
+   "timeAdded": "2022-11-09T09:43:37+0000",
+   "timeUpdated": "2026-11-24T09:12:51+0000"
+  }
+ ],
+ "tags": [
+  {
+   "tagId": 1,
+   "keyword": "purpose:general"
+  },
+  {
+   "tagId": 2,
+   "keyword": "purpose:security"
+  },
+  {
+   "tagId": 3,
+   "keyword": "purpose:regional"
+  },
+  {
+   "tagId": 4,
+   "keyword": "purpose:other"
+  },
+  {
+   "tagId": 100,
+   "keyword": "lang:no"
+  },
+  {
+   "tagId": 101,
+   "keyword": "lang:pl"
+  },
+  {
+   "tagId": 102,
+   "keyword": "lang:ko"
+  },
+  {
+   "tagId": 103,
+   "keyword": "lang:vn"
+  },
+  {
+   "tagId": 104,
+   "keyword": "lang:sv"
+  },
+  {
+   "tagId": 105,
+   "keyword": "lang:it"
+  },
+  {
+   "tagId": 106,
+   "keyword": "lang:ir"
+  },
+  {
+   "tagId": 107,
+   "keyword": "lang:mk"
+  },
+  {
+   "tagId": 108,
+   "keyword": "lang:zh"
+  },
+  {
+   "tagId": 109,
+   "keyword": "lang:id"
+  },
+  {
+   "tagId": 110,
+   "keyword": "lang:tr"
+  },
+  {
+   "tagId": 111,
+   "keyword": "problematic"
+  },
+  {
+   "tagId": 112,
+   "keyword": "lang:hu"
+  },
+  {
+   "tagId": 113,
+   "keyword": "lang:lt"
+  },
+  {
+   "tagId": 114,
+   "keyword": "lang:he"
+  }
+ ],
+ "groups": [
+  {
+   "groupId": 4,
+   "groupName": "Security",
+   "displayNumber": 4
+  },
+  {
+   "groupId": 3,
+   "groupName": "Regional",
+   "displayNumber": 3
+  },
+  {
+   "groupId": 2,
+   "groupName": "Other",
+   "displayNumber": 2
+  },
+  {
+   "groupId": 1,
+   "groupName": "General",
+   "displayNumber": 1
+  }
+ ]
+}
