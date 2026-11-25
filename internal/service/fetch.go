@@ -166,12 +166,26 @@ func fetchList(ctx context.Context, f listFetch, blocked func(net.IP) bool) (lis
 		return listResponse{}, &models.ValidationError{Msg: "list URLs must use https://"}
 	}
 	if f.ProxyAddr != "" {
-		r, err := doListFetch(ctx, u, f, proxyTransport(f.ProxyAddr))
+		if err := validateProxyAddr(f.ProxyAddr); err != nil {
+			return listResponse{}, err
+		}
+		// Hostnames are resolved by the proxy, so only IP-literal targets can be
+		// checked here; they are checked for the URL and every redirect hop.
+		literalGuard := func(u *url.URL) error {
+			if ip := net.ParseIP(u.Hostname()); ip != nil && blocked(ip) {
+				return fmt.Errorf("refusing to connect to non-public address %s: %w", ip, errPrivateTarget)
+			}
+			return nil
+		}
+		if err := literalGuard(u); err != nil {
+			return listResponse{}, err
+		}
+		r, err := doListFetch(ctx, u, f, proxyTransport(f.ProxyAddr), literalGuard)
 		if err == nil || !retryDirect(ctx, err) {
 			return r, err
 		}
 	}
-	return doListFetch(ctx, u, f, directTransport(blocked))
+	return doListFetch(ctx, u, f, directTransport(blocked), nil)
 }
 
 // retryDirect reports whether a proxied attempt failed before any HTTP answer
@@ -180,12 +194,24 @@ func retryDirect(ctx context.Context, err error) bool {
 	var he httpStatusError
 	return ctx.Err() == nil && !errors.As(err, &he) &&
 		!errors.Is(err, errTooManyRedirects) && !errors.Is(err, errRedirectNotHTTPS) &&
-		!errors.Is(err, errListTooLarge)
+		!errors.Is(err, errListTooLarge) && !errors.Is(err, errPrivateTarget)
+}
+
+// validateProxyAddr requires a numeric loopback host:port, since the proxy
+// dialer's guard compares resolved addresses.
+func validateProxyAddr(addr string) error {
+	host, port, err := net.SplitHostPort(addr)
+	if ip := net.ParseIP(host); err != nil || ip == nil || !ip.IsLoopback() || port == "" {
+		return &models.ValidationError{Msg: "proxy address must be a numeric loopback host:port"}
+	}
+	return nil
 }
 
 type httpStatusError struct{ status string }
 
 func (e httpStatusError) Error() string { return "list server answered " + e.status }
+
+var errPrivateTarget = errors.New("private target")
 
 var errListTooLarge = errors.New("list is larger than the size limit")
 
@@ -214,8 +240,17 @@ func proxyTransport(addr string) *http.Transport {
 	}
 }
 
-func doListFetch(ctx context.Context, u *url.URL, f listFetch, tr *http.Transport) (listResponse, error) {
-	client := &http.Client{Timeout: fetchTimeout, Transport: tr, CheckRedirect: limitRedirects(true)}
+func doListFetch(ctx context.Context, u *url.URL, f listFetch, tr *http.Transport, hop func(*url.URL) error) (listResponse, error) {
+	limit := limitRedirects(true)
+	client := &http.Client{Timeout: fetchTimeout, Transport: tr, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if err := limit(req, via); err != nil {
+			return err
+		}
+		if hop != nil {
+			return hop(req.URL)
+		}
+		return nil
+	}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return listResponse{}, err

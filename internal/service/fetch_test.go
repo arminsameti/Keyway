@@ -177,9 +177,7 @@ func TestFetchListProxy(t *testing.T) {
 	trustServer(t, srv)
 	proxy, tunnels := fakeSOCKS5(t)
 
-	// The proxy hop is loopback; the guard must not apply to it, but must
-	// still be what a direct dial would face.
-	r, err := fetchList(context.Background(), listFetch{URL: srv.URL, ProxyAddr: proxy, MaxBytes: 1 << 20}, blockedIP)
+	r, err := fetchList(context.Background(), listFetch{URL: srv.URL, ProxyAddr: proxy, MaxBytes: 1 << 20}, allowAll)
 	if err != nil || string(r.Body) != "||a.com^\n" {
 		t.Fatalf("got %+v err=%v", r, err)
 	}
@@ -223,5 +221,44 @@ func TestFetchListProxyFallback(t *testing.T) {
 	// The retry is guarded.
 	if _, err := fetchList(ctx, listFetch{URL: srv.URL, ProxyAddr: addr, MaxBytes: 10}, blockedIP); err == nil {
 		t.Fatal("direct retry must still apply the address guard")
+	}
+}
+
+func TestFetchListProxyRefusesPrivateLiteral(t *testing.T) {
+	proxy, tunnels := fakeSOCKS5(t)
+	for _, raw := range []string{"https://192.168.1.1/x", "https://127.0.0.1:9/x", "https://[::1]/x"} {
+		_, err := fetchList(context.Background(), listFetch{URL: raw, ProxyAddr: proxy, MaxBytes: 10}, blockedIP)
+		if err == nil || !strings.Contains(err.Error(), "refusing to connect to non-public address") {
+			t.Errorf("%s: want refusal, got %v", raw, err)
+		}
+	}
+	if tunnels.Load() != 0 {
+		t.Errorf("proxy was touched %d times", tunnels.Load())
+	}
+}
+
+func TestFetchListProxyRefusesPrivateRedirect(t *testing.T) {
+	// Public-looking first hop (guard lets it through), private literal second.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://192.168.1.1/x", http.StatusFound)
+	}))
+	defer srv.Close()
+	trustServer(t, srv)
+	proxy, tunnels := fakeSOCKS5(t)
+	guard := func(ip net.IP) bool { return ip.IsPrivate() }
+	_, err := fetchList(context.Background(), listFetch{URL: srv.URL, ProxyAddr: proxy, MaxBytes: 10}, guard)
+	if err == nil || !strings.Contains(err.Error(), "refusing to connect to non-public address") {
+		t.Fatalf("want redirect refusal, got %v", err)
+	}
+	if tunnels.Load() != 1 {
+		t.Errorf("tunnels=%d, want 1 (only the first hop)", tunnels.Load())
+	}
+}
+
+func TestFetchListBadProxyAddr(t *testing.T) {
+	for _, a := range []string{"localhost:1080", "8.8.8.8:1080", "127.0.0.1", "example.com:1"} {
+		if _, err := fetchList(context.Background(), listFetch{URL: "https://example.com/", ProxyAddr: a, MaxBytes: 10}, allowAll); err == nil {
+			t.Errorf("%q accepted", a)
+		}
 	}
 }
