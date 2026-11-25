@@ -12,7 +12,7 @@ import (
 type Set struct{ Suffix, Exact []string }
 
 // Widened records a user allowlist entry that also dropped a broader blocked
-// suffix, so the UI can say "Allowing Allowed also unblocks Unblocked".
+// suffix, so the UI can say "Allowing <Allowed> also unblocks <Unblocked>".
 type Widened struct{ Allowed, Unblocked string }
 
 // Len is the number of entries in the set.
@@ -97,9 +97,13 @@ func Merge(lists []Parsed, allowed []string, max int) (Set, []Widened, error) {
 		for h := parent(a); h != ""; h = parent(h) {
 			if _, ok := suffix[h]; ok {
 				widened = append(widened, Widened{Allowed: a, Unblocked: h})
-				delete(suffix, h)
 			}
 		}
+	}
+	// Delete only after every entry was checked against the unmodified set,
+	// so each allowed entry is reported.
+	for _, w := range widened {
+		delete(suffix, w.Unblocked)
 	}
 	sort.Slice(widened, func(i, j int) bool {
 		if widened[i].Allowed != widened[j].Allowed {

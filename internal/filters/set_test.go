@@ -98,3 +98,21 @@ func TestSetMatch(t *testing.T) {
 		t.Fatal("exact matched subdomain")
 	}
 }
+
+func TestMergeWidenedEveryEntry(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		_, w, _ := Merge([]Parsed{ps([]string{"x.com"}, nil, nil, nil)}, []string{"b.x.com", "a.x.com"}, 100)
+		want := []Widened{{"a.x.com", "x.com"}, {"b.x.com", "x.com"}}
+		if !reflect.DeepEqual(w, want) {
+			t.Fatalf("got %+v", w)
+		}
+	}
+}
+
+func TestGroupDigits(t *testing.T) {
+	for n, want := range map[int]string{0: "0", 999: "999", 1000: "1,000", 2000000: "2,000,000", -1234: "-1,234"} {
+		if got := groupDigits(n); got != want {
+			t.Errorf("%d: got %q want %q", n, got, want)
+		}
+	}
+}
