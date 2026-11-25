@@ -99,8 +99,8 @@
       {
         "type": "local",
         "tag": "keyway-block",
-        "format": "source",
-        "path": "/data/filters/active/keyway-block.json"
+        "format": "binary",
+        "path": "/data/filters/active/keyway-block.srs"
       }
     ],
     "final": "proxy",

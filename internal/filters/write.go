@@ -12,8 +12,11 @@ const (
 	XrayFile    = "keyway-block.dat"
 	XrayCode    = "block"
 	SingBoxFile = "keyway-block.json"
-	MihomoFile  = "keyway-block.txt"
-	Tag         = "keyway-block"
+	// SingBoxBinaryFile is the compiled (.srs) form of SingBoxFile, built at
+	// connect time with the sing-box binary that will read it.
+	SingBoxBinaryFile = "keyway-block.srs"
+	MihomoFile        = "keyway-block.txt"
+	Tag               = "keyway-block"
 
 	// geositeCode is the country code stored in the .dat; engines match it
 	// case-insensitively and geosite.dat stores codes upper-case.

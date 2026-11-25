@@ -138,7 +138,7 @@ func TestGoldenDefaultConfigs(t *testing.T) {
 
 func TestGoldenFilters(t *testing.T) {
 	seg := profile.Single(goldenProfile())
-	seg.Block = &profile.BlockFiles{SingBoxPath: "/data/filters/active/keyway-block.json"}
+	seg.Block = &profile.BlockFiles{SingBoxPath: "/data/filters/active/keyway-block.srs"}
 	cfg, err := BuildConfig(seg, models.DefaultSettings(), ruleSetPath)
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +164,7 @@ func TestFilterRuleFollowsBlockRulesAndSurvivesTUN(t *testing.T) {
 	s.TUN.Enabled = true
 	seg := profile.Single(goldenProfile())
 	seg.TUN = &profile.TUNOptions{Stack: "mixed", MTU: 9000}
-	seg.Block = &profile.BlockFiles{SingBoxPath: "/data/filters/active/keyway-block.json"}
+	seg.Block = &profile.BlockFiles{SingBoxPath: "/data/filters/active/keyway-block.srs"}
 	cfg, err := BuildConfig(seg, s, ruleSetPath)
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestFilterRuleFollowsBlockRulesAndSurvivesTUN(t *testing.T) {
 	}
 	found := false
 	for _, rs := range cfg.Route.RuleSet {
-		if rs.Tag == "keyway-block" && rs.Type == "local" && rs.Format == "source" && rs.Path == seg.Block.SingBoxPath {
+		if rs.Tag == "keyway-block" && rs.Type == "local" && rs.Format == "binary" && rs.Path == seg.Block.SingBoxPath {
 			found = true
 		}
 	}

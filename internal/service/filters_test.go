@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -478,7 +479,7 @@ func TestPlaceFilterFilesNothingToPlace(t *testing.T) {
 func TestPreviewBlockHasNoSideEffects(t *testing.T) {
 	e, _, _ := placeEnv(t)
 	blk := e.svc.previewBlock()
-	if blk == nil || blk.SingBoxPath != filepath.Join(e.svc.dir, "filters", "active", filters.SingBoxFile) {
+	if blk == nil || blk.SingBoxPath != filepath.Join(e.svc.dir, "filters", "active", filters.SingBoxBinaryFile) {
 		t.Fatalf("preview block = %+v", blk)
 	}
 	if _, err := os.Stat(blk.SingBoxPath); !os.IsNotExist(err) {
@@ -517,8 +518,110 @@ func TestSingBoxCopyOnlyWithSingBoxStep(t *testing.T) {
 	if blk, _ := e.svc.placeFilterFiles(pl); blk == nil {
 		t.Fatal("no block")
 	}
+	for _, name := range []string{filters.SingBoxFile, filters.SingBoxBinaryFile} {
+		if _, err := os.Stat(filepath.Join(e.svc.activeDir(), name)); !os.IsNotExist(err) {
+			t.Errorf("sing-box %s made without a sing-box step: %v", name, err)
+		}
+	}
+}
+
+// fakeSingBox writes a shell script standing in for sing-box: it logs each
+// call and, unless the fail marker exists, "compiles" by copying its input.
+func fakeSingBox(t *testing.T) (bin, calls, failMarker string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin, calls, failMarker = filepath.Join(dir, "sing-box"), filepath.Join(dir, "calls"), filepath.Join(dir, "fail")
+	script := "#!/bin/sh\n" +
+		"[ \"$1 $2 $3\" = \"rule-set compile --output\" ] || exit 2\n" +
+		"echo run >> '" + calls + "'\n" +
+		"[ -f '" + failMarker + "' ] && exit 1\n" +
+		"cp \"$5\" \"$4\"\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin, calls, failMarker
+}
+
+func countCalls(t *testing.T, calls string) int {
+	t.Helper()
+	b, err := os.ReadFile(calls)
+	if os.IsNotExist(err) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(b), "run")
+}
+
+func TestSingBoxRuleSetIsCompiledOncePerHash(t *testing.T) {
+	e, pl, _ := placeEnv(t)
+	bin, calls, _ := fakeSingBox(t)
+	pl.installs[1].Bin = bin
+	wantSRS := filepath.Join(e.svc.dir, "filters", "active", filters.SingBoxBinaryFile)
+
+	blk, hash := e.svc.placeFilterFiles(pl)
+	if blk == nil || hash == "" || blk.SingBoxPath != wantSRS {
+		t.Fatalf("block = %+v hash %q, want path %s", blk, hash, wantSRS)
+	}
+	src, _ := os.ReadFile(e.compiled(filters.SingBoxFile))
+	if got, err := os.ReadFile(wantSRS); err != nil || !bytes.Equal(got, src) {
+		t.Fatalf("compiled file = %q, %v", got, err)
+	}
+	if n := countCalls(t, calls); n != 1 {
+		t.Fatalf("compile ran %d times, want 1", n)
+	}
+	if _, err := os.Stat(wantSRS + ".tmp"); !os.IsNotExist(err) {
+		t.Errorf("temp file left behind: %v", err)
+	}
+
+	// same hash: cached
+	if blk, _ := e.svc.placeFilterFiles(pl); blk == nil || blk.SingBoxPath != wantSRS {
+		t.Fatalf("second block = %+v", blk)
+	}
+	if n := countCalls(t, calls); n != 1 {
+		t.Fatalf("cached hash recompiled: %d calls", n)
+	}
+
+	// new hash: compiled again
+	e.svc.filtersMu.Lock()
+	e.svc.compiledSum = "another-hash"
+	e.svc.filtersMu.Unlock()
+	e.svc.placeFilterFiles(pl)
+	if n := countCalls(t, calls); n != 2 {
+		t.Fatalf("new hash: %d calls, want 2", n)
+	}
+}
+
+func TestSingBoxCompileFailureFallsBackToSource(t *testing.T) {
+	e, pl, _ := placeEnv(t)
+	bin, calls, fail := fakeSingBox(t)
+	pl.installs[1].Bin = bin
+	// a good compile first, so there is an older .srs to retire
+	e.svc.placeFilterFiles(pl)
+	if err := os.WriteFile(fail, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	e.svc.filtersMu.Lock()
+	e.svc.compiledSum = "another-hash"
+	e.svc.filtersMu.Unlock()
+
+	blk, hash := e.svc.placeFilterFiles(pl)
+	wantJSON := filepath.Join(e.svc.dir, "filters", "active", filters.SingBoxFile)
+	if blk == nil || hash == "" || blk.SingBoxPath != wantJSON {
+		t.Fatalf("block = %+v hash %q, want source fallback %s", blk, hash, wantJSON)
+	}
+	if _, err := os.Stat(wantJSON); err != nil {
+		t.Errorf("source copy missing: %v", err)
+	}
 	if _, err := os.Stat(e.svc.activeSingBoxPath()); !os.IsNotExist(err) {
-		t.Errorf("sing-box copy made without a sing-box step: %v", err)
+		t.Errorf("stale binary rule set kept: %v", err)
+	}
+	if e.svc.Filters().PlaceError != "" {
+		t.Errorf("a compile failure must not be a placement error: %s", e.svc.Filters().PlaceError)
+	}
+	if n := countCalls(t, calls); n != 2 {
+		t.Errorf("calls = %d", n)
 	}
 }
 

@@ -1,5 +1,7 @@
 package profile
 
+import "strings"
+
 // Bridge is a password-protected SOCKS5 listener on 127.0.0.1 that joins two
 // engine processes of one chain. Another local program cannot use it without
 // the per-connection credentials.
@@ -37,6 +39,15 @@ type Segment struct {
 // sing-box reads its rule set from an absolute path.
 type BlockFiles struct {
 	SingBoxPath string
+}
+
+// SingBoxFormat is the sing-box rule-set format of SingBoxPath: a .srs file is
+// the compiled binary form, anything else (the fallback copy) is JSON source.
+func (b BlockFiles) SingBoxFormat() string {
+	if strings.HasSuffix(b.SingBoxPath, ".srs") {
+		return "binary"
+	}
+	return "source"
 }
 
 // Runtime is the per-run state of an engine that keeps files and a control

@@ -630,7 +630,7 @@ func buildRules(s models.Settings, ruleSetPath func(string) string, block *profi
 		rs = append(rs, RuleSet{Type: "local", Tag: n, Format: "binary", Path: ruleSetPath(n)})
 	}
 	if block != nil && s.BlockAds {
-		rs = append(rs, RuleSet{Type: "local", Tag: filters.Tag, Format: "source", Path: block.SingBoxPath})
+		rs = append(rs, RuleSet{Type: "local", Tag: filters.Tag, Format: block.SingBoxFormat(), Path: block.SingBoxPath})
 	}
 	return rules, rs, nil
 }
