@@ -47,6 +47,11 @@ struct MainView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .alert("Heads up", isPresented: Binding(get: { model.settingsNotice != nil }, set: { if !$0 { model.settingsNotice = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.settingsNotice ?? "")
+        }
         .task(id: model.ready) {
             if model.needsOnboarding && !UserDefaults.standard.bool(forKey: "onboardingDone") {
                 openWindow(id: "onboarding")

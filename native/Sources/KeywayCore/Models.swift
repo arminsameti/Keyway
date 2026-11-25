@@ -201,6 +201,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var tun = TUNSettings()
     public var ruleSets: [RuleSet] = []
     public var activeRuleSet = ""
+    public var filterLists: [FilterList] = []
+    public var allowedSites = ""
     public init() {}
 
     /// The first enabled inbound of a protocol ("socks", "http").
@@ -523,6 +525,10 @@ public struct RouteMatch: Codable, Equatable, Sendable {
     public var ruleId: String?
     public var entry: String?
     public var unknown: [String]?
+    /// Name of the filter list that blocks the destination (set by the backend beside `match`).
+    public var filterList: String?
+    /// The allowlist lets the destination through although a filter list blocks it.
+    public var allowedBy: Bool?
 }
 
 public struct ImportedRules: Codable, Equatable, Sendable {
@@ -611,4 +617,157 @@ public struct TUNHelper: Codable, Equatable, Sendable {
     public var pinnedVersion: String?
     public var outdated = false
     public init() {}
+}
+
+// MARK: filter lists (internal/models/filters.go, internal/service/filters.go, internal/filters/catalog.go)
+
+/// A list the user chose from the catalog or added by URL. A new list is sent
+/// with an empty `id`; the backend assigns one.
+public struct FilterList: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var catalogKey: String?
+    public var name: String
+    public var url: String?
+    public var enabled: Bool
+    public var updateHours: Int?
+    public init(id: String = "", catalogKey: String? = nil, name: String, url: String? = nil, enabled: Bool = true, updateHours: Int? = nil) {
+        self.id = id; self.catalogKey = catalogKey; self.name = name; self.url = url; self.enabled = enabled; self.updateHours = updateHours
+    }
+}
+
+/// The download state of one list (kept by the backend, never part of settings).
+public struct FilterStatus: Codable, Equatable, Sendable {
+    public var updatedAt: Date = .distantPast
+    public var domains = 0
+    public var skipped = 0
+    public var lastError: String?
+    public init() {}
+}
+
+public struct Widened: Codable, Equatable, Hashable, Sendable {
+    public var allowed: String
+    public var unblocked: String
+    public init(allowed: String, unblocked: String) { self.allowed = allowed; self.unblocked = unblocked }
+    enum CodingKeys: String, CodingKey { case allowed = "Allowed", unblocked = "Unblocked" }
+}
+
+/// A chosen list with its status. The backend flattens the list's own fields next to `status`.
+public struct FilterListView: Decodable, Equatable, Identifiable, Sendable {
+    public var list: FilterList
+    public var status: FilterStatus
+    public var applyOnConnect: Bool
+    public var id: String { list.id }
+    /// False while the first download is still running: no download time and no error yet.
+    public var hasStatus: Bool { status.updatedAt != .distantPast || !(status.lastError ?? "").isEmpty }
+
+    enum CodingKeys: String, CodingKey { case status, applyOnConnect }
+    public init(from decoder: Decoder) throws {
+        list = try FilterList(from: decoder)
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        status = try c.decodeIfPresent(FilterStatus.self, forKey: .status) ?? FilterStatus()
+        applyOnConnect = try c.decodeIfPresent(Bool.self, forKey: .applyOnConnect) ?? false
+    }
+    public init(list: FilterList, status: FilterStatus = FilterStatus(), applyOnConnect: Bool = false) {
+        self.list = list; self.status = status; self.applyOnConnect = applyOnConnect
+    }
+}
+
+/// GET /api/filters.
+public struct FilterView: Decodable, Equatable, Sendable {
+    public var lists: [FilterListView] = []
+    public var domains = 0
+    public var warn = false
+    public var widened: [Widened] = []
+    public var mergeError: String?
+    public var placeError: String?
+    public var applyOnConnect = false
+    public init() {}
+
+    enum CodingKeys: String, CodingKey { case lists, domains, warn, widened, mergeError, placeError, applyOnConnect }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        lists = try c.decodeIfPresent([FilterListView].self, forKey: .lists) ?? []
+        domains = try c.decodeIfPresent(Int.self, forKey: .domains) ?? 0
+        warn = try c.decodeIfPresent(Bool.self, forKey: .warn) ?? false
+        widened = try c.decodeIfPresent([Widened].self, forKey: .widened) ?? []
+        mergeError = try c.decodeIfPresent(String.self, forKey: .mergeError)
+        placeError = try c.decodeIfPresent(String.self, forKey: .placeError)
+        applyOnConnect = try c.decodeIfPresent(Bool.self, forKey: .applyOnConnect) ?? false
+    }
+}
+
+/// One entry of AdGuard's catalog. The backend sends Go field names as they are.
+public struct CatalogList: Decodable, Equatable, Identifiable, Sendable {
+    public var key: String
+    public var group: Int
+    public var name: String
+    public var description: String
+    public var homepage: String
+    public var downloadURL: String
+    public var deprecated: Bool
+    public var problematic: Bool
+    public var languages: [String]
+    public var id: String { key }
+
+    enum CodingKeys: String, CodingKey {
+        case key = "Key", group = "Group", name = "Name", description = "Description", homepage = "Homepage"
+        case downloadURL = "DownloadURL", deprecated = "Deprecated", problematic = "Problematic", languages = "Languages"
+    }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decode(String.self, forKey: .key)
+        group = try c.decodeIfPresent(Int.self, forKey: .group) ?? 0
+        name = try c.decode(String.self, forKey: .name)
+        description = try c.decodeIfPresent(String.self, forKey: .description) ?? ""
+        homepage = try c.decodeIfPresent(String.self, forKey: .homepage) ?? ""
+        downloadURL = try c.decodeIfPresent(String.self, forKey: .downloadURL) ?? ""
+        deprecated = try c.decodeIfPresent(Bool.self, forKey: .deprecated) ?? false
+        problematic = try c.decodeIfPresent(Bool.self, forKey: .problematic) ?? false
+        languages = try c.decodeIfPresent([String].self, forKey: .languages) ?? []
+    }
+}
+
+public struct CatalogGroup: Decodable, Equatable, Identifiable, Sendable {
+    public var id: Int
+    public var name: String
+    enum CodingKeys: String, CodingKey { case id = "ID", name = "Name" }
+}
+
+/// GET /api/filters/catalog.
+public struct Catalog: Decodable, Equatable, Sendable {
+    public var groups: [CatalogGroup]
+    public var lists: [CatalogList]
+    public var fetchedAt: Date
+    enum CodingKeys: String, CodingKey { case groups = "Groups", lists = "Lists", fetchedAt = "FetchedAt" }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        groups = try c.decodeIfPresent([CatalogGroup].self, forKey: .groups) ?? []
+        lists = try c.decodeIfPresent([CatalogList].self, forKey: .lists) ?? []
+        fetchedAt = try c.decodeIfPresent(Date.self, forKey: .fetchedAt) ?? .distantPast
+    }
+}
+
+/// POST /api/filters/preview: what a custom list URL holds, nothing saved.
+public struct FilterPreview: Decodable, Equatable, Sendable {
+    public var domains: Int
+    public var skipped: Int
+    public var sample: [String]
+}
+
+/// What a settings save implies (POST /api/settings).
+public struct SettingsResult: Decodable, Equatable, Sendable {
+    public var reconnectRequired = false
+    public var restartRequired = false
+    /// Keyway switched sniffing on because ad blocking in TUN mode needs it.
+    public var sniffingTurnedOn = false
+    public var warning: String?
+    public init() {}
+    enum CodingKeys: String, CodingKey { case reconnectRequired, restartRequired, sniffingTurnedOn, warning }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        reconnectRequired = try c.decodeIfPresent(Bool.self, forKey: .reconnectRequired) ?? false
+        restartRequired = try c.decodeIfPresent(Bool.self, forKey: .restartRequired) ?? false
+        sniffingTurnedOn = try c.decodeIfPresent(Bool.self, forKey: .sniffingTurnedOn) ?? false
+        warning = try c.decodeIfPresent(String.self, forKey: .warning)
+    }
 }

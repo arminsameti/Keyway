@@ -156,6 +156,8 @@ struct RoutingForm: View {
     @State private var direct = ""
     @State private var proxy = ""
     @State private var blocked = ""
+    @State private var showLists = false
+    @State private var showAllowed = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
@@ -171,6 +173,17 @@ struct RoutingForm: View {
                 }
                 CardRow(label: "Block ads and trackers") {
                     Toggle("Block ads and trackers", isOn: settingBinding(model, \.blockAds)).labelsHidden()
+                }
+                CardRow(label: "Filter lists") {
+                    Text(FilterSelection.summary(settings: model.settings, view: model.filterView))
+                        .font(.system(size: 12)).foregroundStyle(Palette.secondary).lineLimit(1)
+                    Button("Choose Lists…") { showLists = true }
+                }
+                CardRow(label: "Allowed sites") {
+                    let n = model.settings.allowedSites.split(separator: "\n").count
+                    Text(n == 0 ? "None" : Format.plural(n, "site"))
+                        .font(.system(size: 12)).foregroundStyle(Palette.secondary)
+                    Button("Edit…") { showAllowed = true }
                 }
                 CardRow(label: "Detect the site name in traffic (sniffing)") {
                     Toggle("Sniffing", isOn: settingBinding(model, \.sniffing)).labelsHidden()
@@ -198,6 +211,9 @@ struct RoutingForm: View {
         }
         .frame(maxWidth: 680)
         .onAppear(perform: load)
+        .task { await model.refreshFilterView() }
+        .sheet(isPresented: $showLists) { FilterListsSheet() }
+        .sheet(isPresented: $showAllowed) { AllowedSitesSheet() }
     }
 
     /// Switching to rule sets creates a starter set when there is none, so the mode is never invalid.

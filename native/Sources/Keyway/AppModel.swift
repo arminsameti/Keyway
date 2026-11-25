@@ -61,6 +61,8 @@ final class AppModel {
     private(set) var tunHelper = TUNHelper()
     var tunBusy = false
     var errorMessage: String?
+    /// What the last settings save implies (sniffing turned on, or a warning); shown once.
+    var settingsNotice: String?
     var testing = false
     /// Servers a running latency test covers; empty while it covers every server (see `testingAll`).
     private(set) var testingIDs: Set<Node.ID> = []
@@ -371,7 +373,96 @@ final class AppModel {
 
     func save(_ s: AppSettings) {
         settings = s
-        perform { try await $0.saveSettings(s) }
+        perform { [weak self] c in
+            let r = try await c.saveSettings(s)
+            await self?.show(r)
+        }
+    }
+
+    /// Reports what a settings save implies: the sniffing switch-on notice and the warning.
+    private func show(_ r: SettingsResult) {
+        var lines: [String] = []
+        if r.sniffingTurnedOn { lines.append(Self.sniffingTurnedOnNotice) }
+        if let w = r.warning, !w.isEmpty { lines.append(w) }
+        if !lines.isEmpty { settingsNotice = lines.joined(separator: "\n\n") }
+    }
+
+    /// Same wording as the backend's SniffingTurnedOnMsg (internal/models/filters.go).
+    static let sniffingTurnedOnNotice = "Ad blocking in TUN mode needs sniffing to see site names, so Keyway turned it on."
+
+    // MARK: filter lists
+
+    private(set) var filterView = FilterView()
+    private(set) var catalog: Catalog?
+    private(set) var catalogError: String?
+    private(set) var catalogLoading = false
+    /// True from a tick until the saved selection is back from the backend, so two quick ticks never send stale list ids.
+    private(set) var filterSaving = false
+    private var filterPollTask: Task<Void, Never>?
+
+    /// Saves a changed list selection or allowlist right away, then follows the downloads.
+    func saveFilters(_ s: AppSettings) {
+        guard let client, !filterSaving else { return }
+        filterSaving = true
+        settings = s
+        Task {
+            defer { filterSaving = false }
+            do { show(try await client.saveSettings(s)) } catch { errorMessage = error.localizedDescription }
+            await refreshState()
+            await refreshFilterView()
+            startFilterPolling()
+        }
+    }
+
+    func refreshFilterView() async {
+        guard let client else { return }
+        if let v = try? await client.filters() { filterView = v }
+    }
+
+    /// Opening the picker is what contacts AdGuard (once a day at most); failure falls back to the cache.
+    func loadCatalog(refresh: Bool = true) async {
+        guard let client, !catalogLoading else { return }
+        catalogLoading = true
+        defer { catalogLoading = false }
+        do {
+            catalog = try await client.filterCatalog(refresh: refresh)
+            catalogError = nil
+        } catch {
+            catalogError = error.localizedDescription
+        }
+    }
+
+    /// Polls every second while an enabled list has no status yet; gives up after 60 seconds or on stopFilterPolling().
+    func startFilterPolling() {
+        filterPollTask?.cancel()
+        filterPollTask = Task { [weak self] in
+            let deadline = ContinuousClock.now + .seconds(60)
+            while !Task.isCancelled, ContinuousClock.now < deadline {
+                guard let self, self.filterView.lists.contains(where: { $0.list.enabled && !$0.hasStatus }) else { return }
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled { return }
+                await self.refreshFilterView()
+            }
+        }
+    }
+
+    func stopFilterPolling() {
+        filterPollTask?.cancel()
+        filterPollTask = nil
+    }
+
+    /// Downloads every enabled list now ("Update now").
+    func updateFilterListsNow() async {
+        guard let client else { return }
+        do { filterView = try await client.refreshFilters() } catch {
+            errorMessage = error.localizedDescription
+            await refreshFilterView()
+        }
+    }
+
+    func previewFilter(url: String) async -> Result<FilterPreview, Error> {
+        guard let client else { return .failure(APIError("Keyway is not running")) }
+        do { return .success(try await client.previewFilter(url: url)) } catch { return .failure(error) }
     }
 
     /// Switches between routing through the system proxy and capturing the whole system (TUN).
@@ -385,7 +476,8 @@ final class AppModel {
         if reconnect { connecting = true }
         perform { [weak self] c in
             defer { Task { @MainActor in self?.connecting = false } }
-            try await c.saveSettings(s)
+            let r = try await c.saveSettings(s)
+            await self?.show(r)
             if reconnect { try await c.connect() }
         }
     }
@@ -425,7 +517,7 @@ final class AppModel {
         do { return try await client.importRules(text) } catch { errorMessage = error.localizedDescription; return nil }
     }
 
-    func testRoute(host: String, port: Int, rules: [RouteRule]) async -> RouteMatch? {
+    func testRoute(host: String, port: Int, rules: [RouteRule]?) async -> RouteMatch? {
         guard let client else { return nil }
         do { return try await client.testRoute(host: host, port: port, rules: rules) } catch { errorMessage = error.localizedDescription; return nil }
     }
