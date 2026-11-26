@@ -774,3 +774,62 @@ func TestApplyOnConnectCoversTurningListsOff(t *testing.T) {
 		t.Fatalf("new content after a list-less connect: %+v", v)
 	}
 }
+
+func TestSingBoxRuleSetRecompiledWhenBinaryChanges(t *testing.T) {
+	e, pl, _ := placeEnv(t)
+	bin, calls, _ := fakeSingBox(t)
+	pl.installs[1].Bin = bin
+	e.svc.placeFilterFiles(pl)
+	e.svc.placeFilterFiles(pl)
+	if n := countCalls(t, calls); n != 1 {
+		t.Fatalf("same binary: %d compiles, want 1", n)
+	}
+	// touching the binary (an engine update keeps the path) forces a rebuild
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(bin, later, later); err != nil {
+		t.Fatal(err)
+	}
+	e.svc.placeFilterFiles(pl)
+	if n := countCalls(t, calls); n != 2 {
+		t.Fatalf("touched binary: %d compiles, want 2", n)
+	}
+	// replacing it with a different one (new size) as well
+	script, _ := os.ReadFile(bin)
+	if err := os.WriteFile(bin, append(script, []byte("# v2\n")...), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	e.svc.placeFilterFiles(pl)
+	if n := countCalls(t, calls); n != 3 {
+		t.Fatalf("replaced binary: %d compiles, want 3", n)
+	}
+}
+
+func TestPlacementDoesNotBlockFiltersView(t *testing.T) {
+	e, pl, _ := placeEnv(t)
+	dir := t.TempDir()
+	bin, started := filepath.Join(dir, "sing-box"), filepath.Join(dir, "started")
+	script := "#!/bin/sh\ntouch '" + started + "'\nsleep 2\ncp \"$5\" \"$4\"\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pl.installs[1].Bin = bin
+	done := make(chan struct{})
+	go func() { defer close(done); e.svc.placeFilterFiles(pl) }()
+	for i := 0; ; i++ { // wait until the exec is really running
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if i > 200 {
+			t.Fatal("fake sing-box never started")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t0 := time.Now()
+	e.svc.Filters()
+	e.svc.TestRoute("a.com", 443, nil)
+	e.svc.previewBlock()
+	if d := time.Since(t0); d > 500*time.Millisecond {
+		t.Fatalf("Filters/TestRoute/previewBlock blocked %v behind the compile", d)
+	}
+	<-done
+}

@@ -553,13 +553,18 @@ const singBoxCompileTimeout = 60 * time.Second
 // thousand domains costs sing-box hundreds of MB; the .srs form a fraction). It
 // returns the path sing-box should load: the .srs, or, when compiling fails,
 // the JSON copy already in the active directory. The .srs is skipped when the
-// sidecar says it was built from the current hash. filtersMu and compileMu are
-// held.
-func (s *Service) compileSingBoxRuleSet(bin string) string {
+// sidecar says it was built from the current hash by this very binary (path,
+// size and mtime: the format a sing-box update changes). compileMu is held,
+// filtersMu is not: the exec must not stall the UI's reads.
+func (s *Service) compileSingBoxRuleSet(bin, sum string) string {
 	srs := s.activeSingBoxPath()
 	sumPath := srs + ".sum"
 	fallback := filepath.Join(s.activeDir(), filters.SingBoxFile)
-	if b, err := os.ReadFile(sumPath); err == nil && string(b) == s.compiledSum {
+	key := sum
+	if fi, err := os.Stat(bin); err == nil {
+		key = fmt.Sprintf("%s\n%s\n%d\n%d", sum, bin, fi.Size(), fi.ModTime().UnixNano())
+	}
+	if b, err := os.ReadFile(sumPath); err == nil && string(b) == key {
 		if _, err := os.Stat(srs); err == nil {
 			return srs
 		}
@@ -573,7 +578,7 @@ func (s *Service) compileSingBoxRuleSet(bin string) string {
 		filepath.Join(s.compiledDir(), filters.SingBoxFile)).CombinedOutput()
 	if err == nil {
 		if err = os.Rename(tmp, srs); err == nil {
-			err = writeFileAtomic(sumPath, []byte(s.compiledSum))
+			err = writeFileAtomic(sumPath, []byte(key))
 		}
 	}
 	if err != nil {
@@ -633,22 +638,25 @@ func (s *Service) placeFilterFiles(pl *connPlan) (blk *profile.BlockFiles, hash 
 	}
 	// compileMu first (as compileFilters does): a compile in progress would
 	// otherwise hand us a mix of old and new files.
+	// Only compileMu is held across the copies and the sing-box exec; filtersMu
+	// is taken briefly so the UI's reads never wait for them.
 	s.compileMu.Lock()
 	defer s.compileMu.Unlock()
 	s.filtersMu.Lock()
-	defer s.filtersMu.Unlock()
-	if s.compiledSum == "" {
-		s.placeErr = ""
+	sum := s.compiledSum
+	s.filtersMu.Unlock()
+	if sum == "" {
+		s.setPlaceError("")
 		return nil, ""
 	}
-	sbPath, err := s.placeLocked(pl)
+	sbPath, err := s.placeLocked(pl, sum)
 	if err != nil {
 		s.log.Warn("filter lists not placed; connecting without them", "err", err)
-		s.placeErr = err.Error()
+		s.setPlaceError(err.Error())
 		return nil, ""
 	}
-	s.placeErr = ""
-	return &profile.BlockFiles{SingBoxPath: sbPath}, s.compiledSum
+	s.setPlaceError("")
+	return &profile.BlockFiles{SingBoxPath: sbPath}, sum
 }
 
 func (s *Service) setPlaceError(msg string) {
@@ -665,9 +673,9 @@ func (s *Service) commitConnectHash(hash string) {
 	s.filtersMu.Unlock()
 }
 
-// placeLocked does the copies; filtersMu and compileMu are held. It returns
-// the path sing-box loads its rule set from.
-func (s *Service) placeLocked(pl *connPlan) (string, error) {
+// placeLocked does the copies; compileMu is held. It returns the path sing-box
+// loads its rule set from.
+func (s *Service) placeLocked(pl *connPlan, sum string) (string, error) {
 	sbPath := s.activeSingBoxPath()
 	src := func(name string) string { return filepath.Join(s.compiledDir(), name) }
 	for k, st := range pl.steps {
@@ -692,7 +700,7 @@ func (s *Service) placeLocked(pl *connPlan) (string, error) {
 			return "", fmt.Errorf("place the filter lists for %s: %w", st.Engine.DisplayName(), err)
 		}
 		if st.Engine.Name() == engine.NameSingBox {
-			sbPath = s.compileSingBoxRuleSet(pl.installs[k].Bin)
+			sbPath = s.compileSingBoxRuleSet(pl.installs[k].Bin, sum)
 		}
 	}
 	return sbPath, nil
