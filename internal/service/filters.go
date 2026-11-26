@@ -339,7 +339,7 @@ func (s *Service) refreshList(ctx context.Context, id string) error {
 func (s *Service) compileFilters() (filters.Set, []filters.Widened, error) {
 	s.compileMu.Lock()
 	defer s.compileMu.Unlock()
-	set, widened, err := s.compile()
+	set, widened, attr, err := s.compile()
 	s.filtersMu.Lock()
 	defer s.filtersMu.Unlock()
 	if err != nil {
@@ -347,14 +347,15 @@ func (s *Service) compileFilters() (filters.Set, []filters.Widened, error) {
 		return filters.Set{}, nil, err
 	}
 	s.mergeErr = ""
-	s.set, s.widened = set, widened
+	s.set, s.widened, s.attr = set, widened, attr
 	s.compiledSum = s.sumCompiled(set)
 	return set, widened, nil
 }
 
-func (s *Service) compile() (filters.Set, []filters.Widened, error) {
+func (s *Service) compile() (filters.Set, []filters.Widened, *attribution, error) {
 	st := s.store.Get().Settings
 	var parsed []filters.Parsed
+	var names []string
 	if st.FiltersActive() {
 		for _, l := range st.EnabledFilterLists() {
 			raw, err := s.rawPath(l.ID)
@@ -372,10 +373,11 @@ func (s *Service) compile() (filters.Set, []filters.Widened, error) {
 				continue
 			}
 			parsed = append(parsed, p)
+			names = append(names, l.Name)
 		}
 	}
 	if len(parsed) == 0 {
-		return filters.Set{}, nil, s.removeCompiled()
+		return filters.Set{}, nil, nil, s.removeCompiled()
 	}
 	var allowed []string
 	for _, line := range strings.Split(st.AllowedSites, "\n") {
@@ -385,15 +387,31 @@ func (s *Service) compile() (filters.Set, []filters.Widened, error) {
 	}
 	set, widened, err := filters.Merge(parsed, allowed, s.maxMerged)
 	if err != nil {
-		return filters.Set{}, nil, err
+		return filters.Set{}, nil, nil, err
+	}
+	// the lists' own @@ rules remove entries from every list, as Merge does
+	removed := map[string]struct{}{}
+	for _, p := range parsed {
+		for d := range p.AllowSuffix {
+			removed[d] = struct{}{}
+		}
+		for d := range p.AllowExact {
+			removed[d] = struct{}{}
+		}
+	}
+	attr := newAttribution()
+	for i, p := range parsed {
+		attr.add(names[i], p, removed)
 	}
 	if set.Len() == 0 {
-		return set, widened, s.removeCompiled()
+		// everything is allowlisted: nothing to place, but the tester still
+		// says the allowlist let the host through
+		return set, widened, attr, s.removeCompiled()
 	}
 	if err := filters.WriteAll(s.compiledDir(), set); err != nil {
-		return filters.Set{}, nil, fmt.Errorf("write compiled filters: %w", err)
+		return filters.Set{}, nil, nil, fmt.Errorf("write compiled filters: %w", err)
 	}
-	return set, widened, nil
+	return set, widened, attr, nil
 }
 
 var compiledFiles = []string{filters.XrayFile, filters.SingBoxFile, filters.MihomoFile}
@@ -724,14 +742,14 @@ func (s *Service) TestRoute(host string, port int, rules []models.RouteRule) Tes
 	var res TestRouteResult
 	if norm, ok := filters.NormalizeHost(strings.TrimSpace(host)); ok && st.FiltersActive() {
 		s.filtersMu.Lock()
-		set := s.set
+		set, attr := s.set, s.attr
 		s.filtersMu.Unlock()
 		if hostAllowed(st.AllowedSites, norm) {
-			if _, found := s.listContaining(st, norm); found {
+			if _, found := attr.listFor(norm); found {
 				res.AllowedBy = true
 			}
 		} else if entry, ok := set.Match(norm); ok {
-			name, _ := s.listContaining(st, norm)
+			name, _ := attr.listFor(norm)
 			res.RouteMatch = models.RouteMatch{Outbound: "block", Entry: entry}
 			res.FilterList = name
 			return res
@@ -761,54 +779,6 @@ func hostAllowed(allowed, host string) bool {
 		}
 	}
 	return false
-}
-
-func parsedHas(m map[string]struct{}, host string) bool {
-	for h := host; h != ""; {
-		if _, ok := m[h]; ok {
-			return true
-		}
-		i := strings.IndexByte(h, '.')
-		if i < 0 {
-			break
-		}
-		h = h[i+1:]
-	}
-	return false
-}
-
-// listContaining re-parses the enabled lists' raw files, in the user's order,
-// and names the first one that lists host. It stops at the first hit and holds
-// no lock, so a lookup never stalls a refresh.
-func (s *Service) listContaining(st models.Settings, host string) (string, bool) {
-	for _, l := range st.EnabledFilterLists() {
-		raw, err := s.rawPath(l.ID)
-		if err != nil {
-			continue
-		}
-		f, err := os.Open(raw)
-		if err != nil {
-			continue
-		}
-		p, err := filters.Parse(f)
-		f.Close()
-		if err != nil {
-			continue
-		}
-		if parsedHas(p.AllowSuffix, host) {
-			continue
-		}
-		if _, ok := p.AllowExact[host]; ok {
-			continue
-		}
-		if parsedHas(p.Suffix, host) {
-			return l.Name, true
-		}
-		if _, ok := p.Exact[host]; ok {
-			return l.Name, true
-		}
-	}
-	return "", false
 }
 
 // FilterPreview is what a custom list URL would contribute, without saving it.

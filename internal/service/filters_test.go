@@ -833,3 +833,18 @@ func TestPlacementDoesNotBlockFiltersView(t *testing.T) {
 	}
 	<-done
 }
+
+func TestTestRouteNamesListWithoutRawFiles(t *testing.T) {
+	e := newFilterEnv(t)
+	e.setLists(t, true, e.custom("l1"))
+	if err := e.svc.RefreshFilters(context.Background(), "l1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(e.svc.dir, "filters", "raw")); err != nil {
+		t.Fatal(err)
+	}
+	r := e.svc.TestRoute("x.a.com", 443, nil)
+	if r.Outbound != "block" || r.FilterList != "l1" {
+		t.Fatalf("result %+v: the list name must come from memory", r)
+	}
+}

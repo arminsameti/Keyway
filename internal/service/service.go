@@ -123,6 +123,7 @@ type Service struct {
 	filtersMu       sync.Mutex
 	set             filters.Set
 	widened         []filters.Widened
+	attr            *attribution // which list holds a domain, built at compile time
 	mergeErr        string
 	placeErr        string // why the lists were not placed at the last connect
 	compiledSum     string // hash of the compiled files
