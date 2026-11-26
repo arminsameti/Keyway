@@ -17,6 +17,8 @@ struct MainView: View {
             Sidebar()
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } detail: {
+            VStack(spacing: 0) {
+            if model.ready { UpdateBanner() }
             Group {
                 if let err = model.startupError {
                     ContentUnavailableView("Backend not available", systemImage: "exclamationmark.triangle", description: Text(err))
@@ -33,6 +35,8 @@ struct MainView: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .tint(Palette.accent)
         .searchable(text: $model.search, isPresented: $searchPresented, placement: .toolbar, prompt: "Search")
@@ -47,6 +51,7 @@ struct MainView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
+        .onAppear { UpdateNotifier.shared.openMain = { openWindow(id: "main") } }
         .task(id: model.ready) {
             if model.needsOnboarding && !UserDefaults.standard.bool(forKey: "onboardingDone") {
                 openWindow(id: "onboarding")

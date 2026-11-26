@@ -184,6 +184,7 @@ final class AppModel {
 
     private func applyUpdate(_ u: AppUpdate) {
         appUpdate = u
+        UpdateNotifier.shared.notifyIfNeeded(u)
         // The disk image is only offered once its checksum matched: show it in Finder, once.
         if let d = u.download, d.state == "done", let path = d.path, revealedUpdate != path {
             revealedUpdate = path
