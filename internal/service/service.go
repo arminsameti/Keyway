@@ -117,6 +117,8 @@ type Service struct {
 	bg            sync.WaitGroup                             // background filter refreshes
 	catalogMu     sync.Mutex                                 // serialises catalog fetches
 	compileMu     sync.Mutex                                 // serialises compiles
+	compiles      atomic.Int64                               // compiles run (tests count them)
+	dueRunning    atomic.Bool                                // a background due-refresh pass is in flight
 	flightMu      sync.Mutex
 	flights       map[string]*filterFlight // refreshes in progress, by list id
 

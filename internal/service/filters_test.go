@@ -848,3 +848,57 @@ func TestTestRouteNamesListWithoutRawFiles(t *testing.T) {
 		t.Fatalf("result %+v: the list name must come from memory", r)
 	}
 }
+
+// ageStatuses makes every list's last update old, so each is due again.
+func (e *filterEnv) ageStatuses(ids ...string) {
+	for _, id := range ids {
+		e.svc.setFilterStatus(id, func(st *models.FilterStatus) { st.UpdatedAt = time.Now().Add(-100 * time.Hour) })
+	}
+}
+
+func TestDueRefreshCompilesOncePerPass(t *testing.T) {
+	e := newFilterEnv(t)
+	e.setLists(t, true, e.custom("l1"), e.custom("l2"))
+	ctx := context.Background()
+	before := e.svc.compiles.Load()
+	e.svc.refreshDueFilters(ctx, map[string]time.Time{})
+	e.svc.bg.Wait()
+	if n := e.svc.compiles.Load() - before; n != 1 {
+		t.Fatalf("two due lists compiled %d times, want 1", n)
+	}
+	if v := e.svc.Filters(); v.Domains != 3 || v.Lists[0].Status.Domains != 3 || v.Lists[1].Status.Domains != 3 {
+		t.Fatalf("view %+v", v)
+	}
+	// both answer 304 now: nothing changed, nothing to compile
+	e.ageStatuses("l1", "l2")
+	before = e.svc.compiles.Load()
+	e.svc.refreshDueFilters(ctx, map[string]time.Time{})
+	e.svc.bg.Wait()
+	if n := e.svc.compiles.Load() - before; n != 0 {
+		t.Fatalf("all-304 pass compiled %d times, want 0", n)
+	}
+	if st := e.svc.store.Get().FilterStatus["l1"]; time.Since(st.UpdatedAt) > time.Minute {
+		t.Fatalf("304 should still bump UpdatedAt: %+v", st)
+	}
+}
+
+func TestDueRefreshRunsInBackground(t *testing.T) {
+	e := newFilterEnv(t)
+	release := make(chan struct{})
+	e.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		<-release
+		_, _ = w.Write([]byte("||a.com^\n"))
+	})
+	e.setLists(t, true, e.custom("l1"))
+	returned := make(chan struct{})
+	go func() { e.svc.refreshDueFilters(context.Background(), map[string]time.Time{}); close(returned) }()
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("refreshDueFilters blocked on the download")
+	}
+	// a second pass while one is running starts nothing
+	e.svc.refreshDueFilters(context.Background(), map[string]time.Time{})
+	close(release)
+	e.svc.bg.Wait()
+}

@@ -53,8 +53,9 @@ type FilterView struct {
 
 // filterFlight is one refresh in progress; later callers for the same list wait on it.
 type filterFlight struct {
-	done chan struct{}
-	err  error
+	done    chan struct{}
+	err     error
+	changed bool
 }
 
 func (s *Service) filtersDir() string  { return filepath.Join(s.dir, "filters") }
@@ -225,7 +226,7 @@ func (s *Service) RefreshFilters(ctx context.Context, id string) error {
 	}
 	var errs []error
 	for _, one := range ids {
-		if err := s.refreshOnce(ctx, one); err != nil {
+		if _, err := s.refreshOnce(ctx, one); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -235,28 +236,29 @@ func (s *Service) RefreshFilters(ctx context.Context, id string) error {
 	return errors.Join(errs...)
 }
 
-// refreshOnce runs refreshList for id; a call while one is running waits for it.
-func (s *Service) refreshOnce(ctx context.Context, id string) error {
+// refreshOnce runs refreshList for id; a call while one is running waits for
+// it. changed reports that new content was stored (not a 304 or a failure).
+func (s *Service) refreshOnce(ctx context.Context, id string) (changed bool, err error) {
 	s.flightMu.Lock()
 	if f, ok := s.flights[id]; ok {
 		s.flightMu.Unlock()
 		select {
 		case <-f.done:
-			return f.err
+			return f.changed, f.err
 		case <-ctx.Done():
-			return ctx.Err()
+			return false, ctx.Err()
 		}
 	}
 	f := &filterFlight{done: make(chan struct{})}
 	s.flights[id] = f
 	s.flightMu.Unlock()
 
-	f.err = s.refreshList(ctx, id)
+	f.changed, f.err = s.refreshList(ctx, id)
 	s.flightMu.Lock()
 	delete(s.flights, id)
 	s.flightMu.Unlock()
 	close(f.done)
-	return f.err
+	return f.changed, f.err
 }
 
 func (s *Service) setFilterStatus(id string, fn func(*models.FilterStatus)) {
@@ -273,19 +275,19 @@ func (s *Service) setFilterStatus(id string, fn func(*models.FilterStatus)) {
 	}
 }
 
-func (s *Service) refreshList(ctx context.Context, id string) error {
+func (s *Service) refreshList(ctx context.Context, id string) (bool, error) {
 	d := s.store.Get()
 	l, ok := d.FindFilterList(id)
 	if !ok {
-		return fmt.Errorf("filter list %q not found", id)
+		return false, fmt.Errorf("filter list %q not found", id)
 	}
-	fail := func(err error) error {
+	fail := func(err error) (bool, error) {
 		s.setFilterStatus(id, func(st *models.FilterStatus) { st.LastError = err.Error() })
-		return err
+		return false, err
 	}
 	raw, err := s.rawPath(id)
 	if err != nil {
-		return err
+		return false, err
 	}
 	st := d.FilterStatus[id]
 	cat, haveCat := s.readCatalogCache()
@@ -312,7 +314,7 @@ func (s *Service) refreshList(ctx context.Context, id string) error {
 				st.LastModified = resp.LastModified
 			}
 		})
-		return nil
+		return false, nil
 	}
 	p, err := filters.Parse(bytes.NewReader(resp.Body))
 	if err != nil {
@@ -327,7 +329,7 @@ func (s *Service) refreshList(ctx context.Context, id string) error {
 			Domains: len(p.Suffix) + len(p.Exact), Skipped: p.Skipped, URL: u,
 		}
 	})
-	return nil
+	return true, nil
 }
 
 // ---- compile ----
@@ -339,6 +341,7 @@ func (s *Service) refreshList(ctx context.Context, id string) error {
 func (s *Service) compileFilters() (filters.Set, []filters.Widened, error) {
 	s.compileMu.Lock()
 	defer s.compileMu.Unlock()
+	s.compiles.Add(1)
 	set, widened, attr, err := s.compile()
 	s.filtersMu.Lock()
 	defer s.filtersMu.Unlock()
@@ -533,7 +536,9 @@ func (s *Service) filtersChanged(ctx context.Context, old, in models.Settings) {
 }
 
 // refreshDueFilters is the Run-loop step: refresh each enabled list that is
-// due, at most once per retrySubAfter.
+// due, at most once per retrySubAfter. The downloads and the one compile that
+// follows run in the background (one pass at a time), so the loop never waits
+// on them.
 func (s *Service) refreshDueFilters(ctx context.Context, lastTry map[string]time.Time) {
 	d := s.store.Get()
 	lists := d.Settings.EnabledFilterLists()
@@ -541,16 +546,36 @@ func (s *Service) refreshDueFilters(ctx context.Context, lastTry map[string]time
 		return
 	}
 	cat, _ := s.readCatalogCache()
+	var due []models.FilterList
 	for _, l := range lists {
-		key := "filter:" + l.ID
-		if !filterDue(l, d.FilterStatus[l.ID], cat, time.Now()) || time.Since(lastTry[key]) < retrySubAfter {
-			continue
-		}
-		lastTry[key] = time.Now()
-		if err := s.RefreshFilters(ctx, l.ID); err != nil && ctx.Err() == nil {
-			s.log.Warn("filter list refresh failed", "list", l.Name, "err", err)
+		if filterDue(l, d.FilterStatus[l.ID], cat, time.Now()) && time.Since(lastTry["filter:"+l.ID]) >= retrySubAfter {
+			due = append(due, l)
 		}
 	}
+	if len(due) == 0 || !s.dueRunning.CompareAndSwap(false, true) {
+		return
+	}
+	for _, l := range due {
+		lastTry["filter:"+l.ID] = time.Now()
+	}
+	s.bg.Add(1)
+	go func() {
+		defer s.bg.Done()
+		defer s.dueRunning.Store(false)
+		changed := false
+		for _, l := range due {
+			ch, err := s.refreshOnce(ctx, l.ID)
+			if err != nil && ctx.Err() == nil {
+				s.log.Warn("filter list refresh failed", "list", l.Name, "err", err)
+			}
+			changed = changed || ch
+		}
+		if changed && ctx.Err() == nil {
+			if _, _, err := s.compileFilters(); err != nil {
+				s.log.Warn("compile filter lists", "err", err)
+			}
+		}
+	}()
 }
 
 // ---- connect-time placement ----
