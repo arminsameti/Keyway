@@ -1,0 +1,54 @@
+{
+  "lists": [
+    {
+      "id": "a1",
+      "catalogKey": "adguard_dns_filter",
+      "name": "AdGuard DNS filter",
+      "enabled": true,
+      "status": {
+        "updatedAt": "2026-11-24T06:00:00Z",
+        "etag": "abc",
+        "domains": 94000,
+        "skipped": 12,
+        "url": "https://example.org/a.txt"
+      },
+      "applyOnConnect": true
+    },
+    {
+      "id": "b2",
+      "name": "My list",
+      "url": "https://example.org/my.txt",
+      "enabled": true,
+      "updateHours": 12,
+      "status": {
+        "updatedAt": "0001-01-01T00:00:00Z",
+        "domains": 0,
+        "skipped": 0,
+        "lastError": "download failed: 404"
+      },
+      "applyOnConnect": false
+    },
+    {
+      "id": "c3",
+      "catalogKey": "hagezi_pro",
+      "name": "HaGeZi Pro",
+      "enabled": true,
+      "status": {
+        "updatedAt": "0001-01-01T00:00:00Z",
+        "domains": 0,
+        "skipped": 0
+      },
+      "applyOnConnect": false
+    }
+  ],
+  "domains": 94000,
+  "warn": true,
+  "widened": [
+    {
+      "Allowed": "cdn.x.com",
+      "Unblocked": "x.com"
+    }
+  ],
+  "placeError": "could not place the lists",
+  "applyOnConnect": true
+}

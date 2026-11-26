@@ -83,3 +83,55 @@ func TestGoldenDefaultConfigs(t *testing.T) {
 		golden(t, "xray-"+c.name, append(b, '\n'))
 	}
 }
+
+func TestGoldenFilters(t *testing.T) {
+	seg := profile.Single(goldenProfile())
+	seg.Block = &profile.BlockFiles{SingBoxPath: "/data/filters/active/keyway-block.json"}
+	cfg, err := BuildConfig(seg, models.DefaultSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden(t, "xray-routing-filters", append(b, '\n'))
+}
+
+func TestFiltersAddToExistingBlockRule(t *testing.T) {
+	seg := profile.Single(goldenProfile())
+	seg.Block = &profile.BlockFiles{}
+	s := models.DefaultSettings()
+	s.BlockedSites = "domain:ads.example"
+	cfg, err := BuildConfig(seg, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.Routing.Rules[0]
+	if got.OutboundTag != "block" || len(got.Domain) != 2 || got.Domain[0] != "domain:ads.example" || got.Domain[1] != "ext:keyway-block.dat:block" {
+		t.Errorf("block rule = %+v", got)
+	}
+	// Block ads off: no filter reference even if a Block is passed
+	s.BlockAds = false
+	cfg, err = BuildConfig(seg, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range cfg.Routing.Rules {
+		for _, d := range r.Domain {
+			if d == "ext:keyway-block.dat:block" {
+				t.Errorf("filter referenced with Block ads off: %+v", r)
+			}
+		}
+	}
+}
+
+func TestNoFiltersUnchanged(t *testing.T) {
+	seg := profile.Single(goldenProfile()) // Block == nil
+	cfg, err := BuildConfig(seg, models.DefaultSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := json.MarshalIndent(cfg, "", "  ")
+	golden(t, "xray-default", append(b, '\n'))
+}

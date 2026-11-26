@@ -60,17 +60,17 @@ func server(d models.DNSServer, tag, detour string) DNSServer {
 // they use are already declared by the routing.
 func directDNSRules(s models.Settings) ([]DNSRule, error) {
 	var out []DNSRule
-	for _, l := range routeLists(s) {
-		if l.target != "direct" {
+	for _, l := range models.RouteLists(s) {
+		if l.Target != "direct" {
 			continue
 		}
 		var domains []string
-		for _, e := range l.entries {
+		for _, e := range l.Entries {
 			if kind, err := models.EntryKind(e); err == nil && kind == models.KindDomain {
 				domains = append(domains, e)
 			}
 		}
-		rules, err := listRules(routeList{target: "direct", entries: domains}, map[string]bool{})
+		rules, err := listRules(models.RouteList{Target: "direct", Entries: domains}, map[string]bool{})
 		if err != nil {
 			return nil, err
 		}

@@ -1,0 +1,84 @@
+mode: rule
+log-level: warning
+ipv6: true
+find-process-mode: "off"
+geodata-mode: false
+geo-auto-update: false
+geox-url:
+    geoip: http://127.0.0.1:1/geoip.metadb
+    mmdb: http://127.0.0.1:1/country.mmdb
+    geosite: http://127.0.0.1:1/geosite.dat
+    asn: http://127.0.0.1:1/asn.mmdb
+dns:
+    enable: true
+    ipv6: true
+    default-nameserver:
+        - 1.1.1.1
+        - 8.8.8.8
+    nameserver:
+        - 1.1.1.1
+        - 8.8.8.8
+        - system
+sniffer:
+    enable: true
+    sniff:
+        HTTP:
+            ports:
+                - 1-65535
+        QUIC:
+            ports:
+                - 1-65535
+        TLS:
+            ports:
+                - 1-65535
+listeners:
+    - name: socks-in
+      type: socks
+      listen: 127.0.0.1
+      port: 10808
+      udp: true
+    - name: http-in
+      type: http
+      listen: 127.0.0.1
+      port: 10809
+proxies:
+    - name: proxy
+      type: vless
+      server: b.example
+      port: 443
+      uuid: b831381d-6324-4d53-ad4f-8cda48b30811
+      udp: true
+      tls: true
+      servername: a.example
+rules:
+    - GEOSITE,category-ads-all,REJECT
+    - RULE-SET,keyway-block,REJECT
+    - IP-CIDR,0.0.0.0/8,DIRECT,no-resolve
+    - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+    - IP-CIDR,100.64.0.0/10,DIRECT,no-resolve
+    - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+    - IP-CIDR,169.254.0.0/16,DIRECT,no-resolve
+    - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+    - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+    - IP-CIDR6,::1/128,DIRECT,no-resolve
+    - IP-CIDR6,fc00::/7,DIRECT,no-resolve
+    - IP-CIDR6,fe80::/10,DIRECT,no-resolve
+    - GEOSITE,private,DIRECT
+    - GEOSITE,cn,DIRECT
+    - IP-CIDR,0.0.0.0/8,DIRECT
+    - IP-CIDR,10.0.0.0/8,DIRECT
+    - IP-CIDR,100.64.0.0/10,DIRECT
+    - IP-CIDR,127.0.0.0/8,DIRECT
+    - IP-CIDR,169.254.0.0/16,DIRECT
+    - IP-CIDR,172.16.0.0/12,DIRECT
+    - IP-CIDR,192.168.0.0/16,DIRECT
+    - IP-CIDR6,::1/128,DIRECT
+    - IP-CIDR6,fc00::/7,DIRECT
+    - IP-CIDR6,fe80::/10,DIRECT
+    - MATCH,proxy
+rule-providers:
+    keyway-block:
+        type: file
+        behavior: domain
+        format: text
+        path: ./keyway-block.txt

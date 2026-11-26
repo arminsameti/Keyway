@@ -9,6 +9,6 @@ let package = Package(
         // API client, models, formatting and form definitions: no UI.
         .target(name: "KeywayCore"),
         .executableTarget(name: "Keyway", dependencies: ["KeywayCore"]),
-        .testTarget(name: "KeywayCoreTests", dependencies: ["KeywayCore"]),
+        .testTarget(name: "KeywayCoreTests", dependencies: ["KeywayCore"], resources: [.copy("Fixtures")]),
     ]
 )

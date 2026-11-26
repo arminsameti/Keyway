@@ -93,6 +93,7 @@ func (s *Settings) Normalize() {
 		s.DNSMode = d.DNSMode
 	}
 	s.DNSDirect = strings.TrimSpace(s.DNSDirect)
+	s.normalizeFilters()
 	for i := range s.Inbounds {
 		ib := &s.Inbounds[i]
 		ib.Tag = strings.TrimSpace(ib.Tag)
@@ -150,6 +151,7 @@ func (s Settings) Validate() error {
 		}
 	}
 	s.validateDNS(add)
+	s.validateFilters(add)
 
 	tags := map[string]bool{}
 	ports := map[int]string{}

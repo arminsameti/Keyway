@@ -519,6 +519,7 @@ func (s *Service) PreviewConfig(id string) (ConfigPreview, error) {
 	if err != nil {
 		return ConfigPreview{}, err
 	}
+	segs[len(segs)-1].Block = s.previewBlock() // the path it would have; nothing is copied
 	var out ConfigPreview
 	for k, seg := range segs {
 		cfg, err := pl.steps[k].Engine.Config(seg, d.Settings)

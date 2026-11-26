@@ -84,6 +84,9 @@ func normalize(d models.AppData) models.AppData {
 	if d.EngineChecks == nil {
 		d.EngineChecks = map[string]models.EngineCheck{}
 	}
+	if d.FilterStatus == nil {
+		d.FilterStatus = map[string]models.FilterStatus{}
+	}
 	if len(d.Settings.Inbounds) == 0 {
 		d.Settings.Inbounds = models.DefaultSettings().Inbounds
 	}

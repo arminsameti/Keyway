@@ -110,6 +110,9 @@ type Settings struct {
 
 	RuleSets      []RuleSet `json:"ruleSets"`      // used by routing mode "rules"
 	ActiveRuleSet string    `json:"activeRuleSet"` // ID of the rule set in use
+
+	FilterLists  []FilterList `json:"filterLists"`  // ad-block lists to download; apply only while BlockAds is on
+	AllowedSites string       `json:"allowedSites"` // never blocked by a filter list; one domain per line
 }
 
 // EngineCheck records the last update check for one engine.
@@ -135,6 +138,9 @@ type AppData struct {
 	Subscriptions []Subscription         `json:"subscriptions"`
 	Groups        []Group                `json:"groups"`
 	Settings      Settings               `json:"settings"`
+	// FilterStatus is the download state of each filter list (FilterList.ID ->
+	// status). Only the service writes it; it is not part of Settings.
+	FilterStatus map[string]FilterStatus `json:"filterStatus"`
 }
 
 // DefaultSettings returns the out-of-the-box preferences.
@@ -176,6 +182,7 @@ func DefaultAppData() AppData {
 		Nodes:         []Node{},
 		Subscriptions: []Subscription{},
 		Groups:        []Group{},
+		FilterStatus:  map[string]FilterStatus{},
 		Settings:      DefaultSettings(),
 	}
 }
@@ -227,6 +234,10 @@ func (d AppData) Clone() AppData {
 		g.Members = append([]string(nil), g.Members...)
 		c.Groups[i] = g
 	}
+	c.FilterStatus = make(map[string]FilterStatus, len(d.FilterStatus))
+	for k, v := range d.FilterStatus {
+		c.FilterStatus[k] = v
+	}
 	c.Settings = d.Settings.Clone()
 	return c
 }
@@ -236,6 +247,7 @@ func (s Settings) Clone() Settings {
 	c := s
 	c.Inbounds = append([]Inbound{}, s.Inbounds...)
 	c.DNS = append([]string{}, s.DNS...)
+	c.FilterLists = append([]FilterList{}, s.FilterLists...)
 	c.RuleSets = make([]RuleSet, len(s.RuleSets))
 	for i, set := range s.RuleSets {
 		c.RuleSets[i] = RuleSet{ID: set.ID, Name: set.Name, Rules: make([]RouteRule, len(set.Rules))}

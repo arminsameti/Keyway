@@ -65,6 +65,8 @@ func (s *Service) Run(ctx context.Context) {
 
 		s.maybeCheckApp(ctx)
 
+		s.refreshDueFilters(ctx, lastTry)
+
 		if d.Settings.SubUpdateHours > 0 {
 			for _, sub := range d.Subscriptions {
 				if !subscriptionDue(d.Settings.SubUpdateHours, sub.UpdateHours, sub.UpdatedAt) ||

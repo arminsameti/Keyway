@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"keyway/internal/models"
@@ -63,4 +64,21 @@ func TestGoldenDefaultConfigs(t *testing.T) {
 		t.Fatal(err)
 	}
 	golden(t, "v2ray-probe", append(b, '\n'))
+}
+
+func TestFiltersReferenceTheDatFile(t *testing.T) {
+	seg := profile.Single(vless())
+	seg.Block = &profile.BlockFiles{}
+	b, err := BuildConfig(seg, models.DefaultSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "ext:keyway-block.dat:block") {
+		t.Errorf("v2ray config does not reference the filter file:\n%s", b)
+	}
+	plain, err := BuildConfig(profile.Single(vless()), models.DefaultSettings())
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden(t, "v2ray-default", append(plain, '\n'))
 }

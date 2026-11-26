@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -19,6 +20,7 @@ import (
 
 	"keyway/internal/core"
 	"keyway/internal/engine"
+	"keyway/internal/filters"
 	"keyway/internal/link"
 	"keyway/internal/models"
 	"keyway/internal/store"
@@ -104,6 +106,31 @@ type Service struct {
 	tagCache map[string]map[string]bool
 
 	fetch func(ctx context.Context, url string) (subResponse, error) // replaceable in tests
+
+	// filter lists. filtersMu guards the in-memory compiled state; the main
+	// locks are never held across a download.
+	fetchGuard    func(net.IP) bool // refuses private targets on list and catalog fetches; tests relax it
+	catalogURL    string
+	maxMerged     int
+	running       func() bool                                        // nil: s.run.IsRunning (tests fake it)
+	filterRefresh func(ctx context.Context, id string) (bool, error) // the save-triggered refresh, without compiling (tests observe it)
+	bg            sync.WaitGroup                                     // background filter refreshes
+	catalogMu     sync.Mutex                                         // serialises catalog fetches
+	compileMu     sync.Mutex                                         // serialises compiles
+	compiles      atomic.Int64                                       // compiles run (tests count them)
+	startupDone   chan struct{}                                      // closed when the startup compile is done
+	dueRunning    atomic.Bool                                        // a background due-refresh pass is in flight
+	flightMu      sync.Mutex
+	flights       map[string]*filterFlight // refreshes in progress, by list id
+
+	filtersMu       sync.Mutex
+	set             filters.Set
+	widened         []filters.Widened
+	attr            *attribution // which list holds a domain, built at compile time
+	mergeErr        string
+	placeErr        string // why the lists were not placed at the last connect
+	compiledSum     string // hash of the compiled files
+	lastConnectHash string // hash of the compiled files at the last connect (set when the files are placed)
 }
 
 // New builds the service and migrates old data if needed.
@@ -118,8 +145,10 @@ func New(c Config) (*Service, error) {
 		store: c.Store, engines: c.Engines, enginesDir: c.EnginesDir, run: c.Runner, sys: c.Sys, log: c.Logger, dir: c.Dir,
 		autoDL:   c.AutoDownload,
 		verCache: map[string]string{}, tagCache: map[string]map[string]bool{},
-		fetch: safeFetch,
-		app:   c.AppUpdater, downloadsDir: c.DownloadsDir,
+		fetch:      safeFetch,
+		fetchGuard: blockedIP, catalogURL: filters.CatalogURL, maxMerged: maxMergedDomains,
+		flights: map[string]*filterFlight{},
+		app:     c.AppUpdater, downloadsDir: c.DownloadsDir,
 	}
 	if s.downloadsDir == "" {
 		if home, err := os.UserHomeDir(); err == nil {
@@ -131,6 +160,23 @@ func New(c Config) (*Service, error) {
 	s.run.OnExit(s.onEngineExit)
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate data: %w", err)
+	}
+	s.filterRefresh = s.refreshOnce
+	// The startup compile runs in the background so a big set never delays
+	// the daemon coming up. A connect waits for it (placeFilterFiles), so it
+	// never sees "nothing compiled" while this is still running.
+	s.startupDone = make(chan struct{})
+	if c.Store.Get().Settings.FiltersActive() {
+		s.bg.Add(1)
+		go func() {
+			defer s.bg.Done()
+			defer close(s.startupDone)
+			if _, _, err := s.compileFilters(); err != nil {
+				s.log.Warn("compile filter lists", "err", err)
+			}
+		}()
+	} else {
+		close(s.startupDone)
 	}
 	s.syncTags()
 	return s, nil
@@ -384,6 +430,9 @@ func (s *Service) ConfigJSON() ([]byte, error) {
 type SettingsResult struct {
 	ReconnectRequired bool `json:"reconnectRequired"`
 	RestartRequired   bool `json:"restartRequired"`
+	// SniffingTurnedOn: Keyway switched sniffing on because ad blocking in TUN mode needs it.
+	SniffingTurnedOn bool   `json:"sniffingTurnedOn"`
+	Warning          string `json:"warning,omitempty"`
 }
 
 // configRelevant blanks the fields that do not influence the generated xray config.
@@ -396,10 +445,11 @@ func configRelevant(st models.Settings) models.Settings {
 // UpdateSettings validates and persists new settings.
 func (s *Service) UpdateSettings(ctx context.Context, in models.Settings) (SettingsResult, error) {
 	in.Normalize()
+	old := s.store.Get().Settings
+	turnedOn, warn := models.EnsureTUNSniffing(old, &in)
 	if err := in.Validate(); err != nil {
 		return SettingsResult{}, err
 	}
-	old := s.store.Get().Settings
 	if _, err := s.store.Update(func(d *models.AppData) error {
 		d.Settings = in
 		return nil
@@ -408,7 +458,8 @@ func (s *Service) UpdateSettings(ctx context.Context, in models.Settings) (Setti
 	}
 	s.torFlag.Store(in.TorEnabled)
 	s.setDNS(in)
-	res := SettingsResult{RestartRequired: old.APIPort != in.APIPort}
+	s.filtersChanged(ctx, old, in)
+	res := SettingsResult{RestartRequired: old.APIPort != in.APIPort, SniffingTurnedOn: turnedOn, Warning: warn}
 	if old.TorEnabled && !in.TorEnabled && strings.Contains(s.current().Label, engine.TorDisplayName) && s.run.IsRunning() {
 		if err := s.Disconnect(ctx); err != nil {
 			s.log.Warn("disconnect after turning Tor off", "err", err)

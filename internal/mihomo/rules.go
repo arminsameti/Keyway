@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 
+	"keyway/internal/filters"
 	"keyway/internal/models"
 )
 
@@ -19,49 +20,6 @@ const (
 var privateCIDRs = []string{
 	"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.168.0.0/16",
 	"::1/128", "fc00::/7", "fe80::/10",
-}
-
-// routeList sends every entry to one target ("proxy", "direct" or "block").
-type routeList struct {
-	target  string
-	entries []string
-}
-
-// routeLists mirrors the Xray rule order: block, explicit proxy, then direct.
-func routeLists(s models.Settings) []routeList {
-	split := func(v string) []string {
-		var out []string
-		for _, e := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == '\n' || r == '\r' }) {
-			if e = strings.TrimSpace(e); e != "" {
-				out = append(out, e)
-			}
-		}
-		return out
-	}
-	var lists []routeList
-	blocked := split(s.BlockedSites)
-	if s.BlockAds && len(blocked) == 0 {
-		blocked = []string{"geosite:category-ads-all"}
-	}
-	if s.BlockAds || s.RoutingMode == "custom" {
-		lists = append(lists, routeList{"block", blocked})
-	}
-	switch s.RoutingMode {
-	case "rules":
-		for _, r := range s.ActiveRules() {
-			lists = append(lists, routeList{r.Outbound, r.Entries})
-		}
-	case "custom":
-		lists = append(lists, routeList{"proxy", split(s.ProxySites)}, routeList{"direct", split(s.DirectSites)})
-	case "global":
-	default: // bypass-private
-		direct := split(s.DirectSites)
-		if len(direct) == 0 {
-			direct = []string{"geosite:private", "geosite:cn"}
-		}
-		lists = append(lists, routeList{"direct", append([]string{"geoip:private"}, direct...)})
-	}
-	return lists
 }
 
 func target(t string) string {
@@ -96,15 +54,19 @@ func (r rule) text(noResolve bool) string {
 // rules were read, so the IP rules go first with no-resolve (they match only
 // destinations that are already addresses) and again, resolving, after the last
 // rule.
-func buildRules(s models.Settings) ([]string, error) {
+func buildRules(s models.Settings, withFilters bool) ([]string, error) {
 	var all []rule
-	for _, l := range routeLists(s) {
-		for _, e := range l.entries {
-			rs, err := entryRules(e, target(l.target))
+	for _, l := range models.RouteLists(s) {
+		for _, e := range l.Entries {
+			rs, err := entryRules(e, target(l.Target))
 			if err != nil {
 				return nil, err
 			}
 			all = append(all, rs...)
+		}
+		if l.Target == "block" && withFilters && s.BlockAds {
+			// the compiled filter lists, right after the existing block rules
+			all = append(all, rule{body: "RULE-SET," + filters.Tag, to: target("block")})
 		}
 	}
 	var out []string
@@ -139,7 +101,7 @@ func rulesNeed(rules []string) []string {
 // GeoData lists the geodata files the routing settings need, so they can be
 // downloaded (and verified) before Mihomo starts.
 func GeoData(s models.Settings) []string {
-	rules, err := buildRules(s)
+	rules, err := buildRules(s, false)
 	if err != nil {
 		return nil
 	}

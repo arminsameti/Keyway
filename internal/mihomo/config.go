@@ -9,6 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"keyway/internal/filters"
 	"keyway/internal/models"
 	"keyway/internal/profile"
 )
@@ -76,8 +77,12 @@ func BuildConfig(seg profile.Segment, s models.Settings) ([]byte, error) {
 		}
 		cfg.Listeners = append(cfg.Listeners, l)
 	}
-	if cfg.Rules, err = buildRules(s); err != nil {
+	if cfg.Rules, err = buildRules(s, seg.Block != nil); err != nil {
 		return nil, err
+	}
+	if seg.Block != nil && s.BlockAds {
+		// a file provider reads the compiled list from Mihomo's home (-d)
+		cfg.RuleProviders = map[string]RuleProvider{filters.Tag: {Type: "file", Behavior: "domain", Format: "text", Path: "./" + filters.MihomoFile}}
 	}
 	if st := seg.Stats; st != nil {
 		if st.Secret == "" {

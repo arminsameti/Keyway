@@ -73,6 +73,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/nodes/{id}/config", s.nodeConfig)
 	mux.HandleFunc("POST /api/routing/import", s.routingImport)
 	mux.HandleFunc("POST /api/routing/test", s.routingTest)
+	mux.HandleFunc("GET /api/filters", s.filtersView)
+	mux.HandleFunc("GET /api/filters/catalog", s.filtersCatalog)
+	mux.HandleFunc("POST /api/filters/refresh", s.filtersRefresh)
+	mux.HandleFunc("POST /api/filters/preview", s.filtersPreview)
 	mux.HandleFunc("POST /api/active", s.setActive)
 	mux.HandleFunc("POST /api/active/group", s.setActiveGroup)
 

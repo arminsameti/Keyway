@@ -20,6 +20,17 @@ type Config struct {
 	Listeners []Listener `yaml:"listeners"`
 	Proxies   []Proxy    `yaml:"proxies"`
 	Rules     []string   `yaml:"rules"`
+
+	RuleProviders map[string]RuleProvider `yaml:"rule-providers,omitempty"`
+}
+
+// RuleProvider is a list of domains Mihomo reads from a file; the path is
+// relative to its home directory (-d), outside which it refuses to read.
+type RuleProvider struct {
+	Type     string `yaml:"type"`
+	Behavior string `yaml:"behavior"`
+	Format   string `yaml:"format"`
+	Path     string `yaml:"path"`
 }
 
 // GeoxURL are the places Mihomo downloads geodata from when a file is missing.
