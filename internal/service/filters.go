@@ -730,13 +730,9 @@ func (s *Service) TestRoute(host string, port int, rules []models.RouteRule) Tes
 		}
 	}
 	var chain []models.RouteRule
-	if st.BlockAds || st.RoutingMode == "custom" {
-		blocked := splitTesterList(st.BlockedSites)
-		if st.BlockAds && len(blocked) == 0 {
-			blocked = []string{"geosite:category-ads-all"}
-		}
-		if len(blocked) > 0 {
-			chain = append(chain, models.RouteRule{ID: "blocked-sites", Enabled: true, Entries: blocked, Outbound: "block"})
+	for _, l := range models.RouteLists(st) {
+		if l.Target == "block" && len(l.Entries) > 0 {
+			chain = append(chain, models.RouteRule{ID: l.ID, Enabled: true, Entries: l.Entries, Outbound: "block"})
 		}
 	}
 	if rules == nil {
@@ -744,16 +740,6 @@ func (s *Service) TestRoute(host string, port int, rules []models.RouteRule) Tes
 	}
 	res.RouteMatch = models.MatchRoute(append(chain, rules...), host, port)
 	return res
-}
-
-func splitTesterList(v string) []string {
-	var out []string
-	for _, e := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == '\n' || r == '\r' }) {
-		if e = strings.TrimSpace(e); e != "" {
-			out = append(out, e)
-		}
-	}
-	return out
 }
 
 // hostAllowed reports whether the allowlist covers host (the entry or a parent).

@@ -22,49 +22,6 @@ var privateCIDRs = []string{
 	"::1/128", "fc00::/7", "fe80::/10",
 }
 
-// routeList sends every entry to one target ("proxy", "direct" or "block").
-type routeList struct {
-	target  string
-	entries []string
-}
-
-// routeLists mirrors the Xray rule order: block, explicit proxy, then direct.
-func routeLists(s models.Settings) []routeList {
-	split := func(v string) []string {
-		var out []string
-		for _, e := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == '\n' || r == '\r' }) {
-			if e = strings.TrimSpace(e); e != "" {
-				out = append(out, e)
-			}
-		}
-		return out
-	}
-	var lists []routeList
-	blocked := split(s.BlockedSites)
-	if s.BlockAds && len(blocked) == 0 {
-		blocked = []string{"geosite:category-ads-all"}
-	}
-	if s.BlockAds || s.RoutingMode == "custom" {
-		lists = append(lists, routeList{"block", blocked})
-	}
-	switch s.RoutingMode {
-	case "rules":
-		for _, r := range s.ActiveRules() {
-			lists = append(lists, routeList{r.Outbound, r.Entries})
-		}
-	case "custom":
-		lists = append(lists, routeList{"proxy", split(s.ProxySites)}, routeList{"direct", split(s.DirectSites)})
-	case "global":
-	default: // bypass-private
-		direct := split(s.DirectSites)
-		if len(direct) == 0 {
-			direct = []string{"geosite:private", "geosite:cn"}
-		}
-		lists = append(lists, routeList{"direct", append([]string{"geoip:private"}, direct...)})
-	}
-	return lists
-}
-
 func target(t string) string {
 	switch t {
 	case "direct":
@@ -99,15 +56,15 @@ func (r rule) text(noResolve bool) string {
 // rule.
 func buildRules(s models.Settings, withFilters bool) ([]string, error) {
 	var all []rule
-	for _, l := range routeLists(s) {
-		for _, e := range l.entries {
-			rs, err := entryRules(e, target(l.target))
+	for _, l := range models.RouteLists(s) {
+		for _, e := range l.Entries {
+			rs, err := entryRules(e, target(l.Target))
 			if err != nil {
 				return nil, err
 			}
 			all = append(all, rs...)
 		}
-		if l.target == "block" && withFilters && s.BlockAds {
+		if l.Target == "block" && withFilters && s.BlockAds {
 			// the compiled filter lists, right after the existing block rules
 			all = append(all, rule{body: "RULE-SET," + filters.Tag, to: target("block")})
 		}
