@@ -95,6 +95,10 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 		return ConnectResult{}, serr
 	}
 	segs[len(segs)-1].Stats = stats
+	// the compiled filter lists are placed before any config is checked; only
+	// the segment that routes references them
+	block, placedHash := s.placeFilterFiles(pl)
+	segs[len(segs)-1].Block = block
 	if d.Settings.TUN.Enabled {
 		segs[len(segs)-1].TUN = tunOptions(d.Settings.TUN, pl)
 	}
@@ -128,6 +132,7 @@ func (s *Service) connectLocked(ctx context.Context) (ConnectResult, error) {
 		s.dropSysProxy()
 		return ConnectResult{}, err
 	}
+	s.commitConnectHash(placedHash)
 	s.waitOpenVPN(ctx, hops, d.Settings)
 	s.startTraffic(trafficSourceFor(final, pl.finalInstall(), stats))
 	s.setCurrent(runInfo{NodeID: node.ID, Engine: final, Version: pl.finalInstall().Version, Label: engine.EngineNames(pl.steps), TUN: d.Settings.TUN.Enabled})

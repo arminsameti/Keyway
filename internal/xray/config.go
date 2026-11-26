@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"keyway/internal/filters"
 	"keyway/internal/models"
 	"keyway/internal/profile"
 )
@@ -53,7 +54,7 @@ func BuildConfig(seg profile.Segment, s models.Settings) (*Config, error) {
 		cfg.Outbounds[0].Mux = &Mux{Enabled: true, Concurrency: conc}
 	}
 	cfg.Inbounds = buildInbounds(s)
-	rules, err := buildRules(s)
+	rules, err := buildRules(s, seg.Block != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -131,19 +132,11 @@ func buildInbounds(s models.Settings) []Inbound {
 }
 
 // SplitList splits a comma/newline separated list, dropping blanks.
-func SplitList(s string) []string {
-	var out []string
-	for _, p := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == '\n' || r == '\r' }) {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
-		}
-	}
-	return out
-}
+func SplitList(s string) []string { return models.SplitSites(s) }
 
 // buildRules honours DirectSites / ProxySites / BlockedSites / BlockAds in every
-// mode. Order matters: block, then explicit proxy, then direct.
-func buildRules(s models.Settings) ([]Rule, error) {
+// mode. With filters set, the block rule also matches the compiled filter lists. Order matters: block, then explicit proxy, then direct.
+func buildRules(s models.Settings, withFilters bool) ([]Rule, error) {
 	var rules []Rule
 	add := func(tag string, domains, ips []string) {
 		if len(domains) > 0 || len(ips) > 0 {
@@ -151,33 +144,29 @@ func buildRules(s models.Settings) ([]Rule, error) {
 		}
 	}
 
-	blocked := SplitList(s.BlockedSites)
-	if s.BlockAds && len(blocked) == 0 {
-		blocked = []string{"geosite:category-ads-all"}
+	for _, l := range models.RouteLists(s) {
+		switch {
+		case l.Target == "block":
+			blocked := l.Entries
+			if withFilters && s.BlockAds {
+				// the compiled filter lists, placed next to the engine at connect time
+				blocked = append(blocked[:len(blocked):len(blocked)], "ext:"+filters.XrayFile+":"+filters.XrayCode)
+			}
+			add("block", blocked, nil)
+		case s.RoutingMode == "rules":
+			// handled below: Xray needs one rule per kind of entry
+		case l.IPOnly:
+			add(l.Target, nil, l.Entries)
+		default:
+			add(l.Target, l.Entries, nil)
+		}
 	}
-	if s.BlockAds || s.RoutingMode == "custom" {
-		add("block", blocked, nil)
-	}
-
-	switch s.RoutingMode {
-	case "rules":
+	if s.RoutingMode == "rules" {
 		custom, err := customRules(s)
 		if err != nil {
 			return nil, err
 		}
 		rules = append(rules, custom...)
-	case "global":
-		// Everything through the proxy: only the block rule above applies.
-	case "custom":
-		add("proxy", SplitList(s.ProxySites), nil)
-		add("direct", SplitList(s.DirectSites), nil)
-	default: // bypass-private
-		add("direct", nil, []string{"geoip:private"})
-		direct := SplitList(s.DirectSites)
-		if len(direct) == 0 {
-			direct = []string{"geosite:private", "geosite:cn"}
-		}
-		add("direct", direct, nil)
 	}
 	if rules == nil {
 		rules = []Rule{}

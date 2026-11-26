@@ -1,5 +1,7 @@
 package profile
 
+import "strings"
+
 // Bridge is a password-protected SOCKS5 listener on 127.0.0.1 that joins two
 // engine processes of one chain. Another local program cannot use it without
 // the per-connection credentials.
@@ -20,6 +22,8 @@ type Bridge struct {
 //     next segment.
 //   - Stats, when set on the segment that serves the user, makes the engine
 //     expose its traffic counters on a loopback port.
+//   - Block, when set on the segment that serves the user, makes the block
+//     rule also match the compiled filter lists (placed by the service).
 type Segment struct {
 	Hops     []Profile
 	Upstream *Bridge
@@ -27,6 +31,23 @@ type Segment struct {
 	Stats    *StatsAPI
 	TUN      *TUNOptions
 	Runtime  *Runtime
+	Block    *BlockFiles
+}
+
+// BlockFiles says the compiled filter lists are in place. The Xray, V2Ray and
+// Mihomo files are found by name in the engine's own asset or home directory;
+// sing-box reads its rule set from an absolute path.
+type BlockFiles struct {
+	SingBoxPath string
+}
+
+// SingBoxFormat is the sing-box rule-set format of SingBoxPath: a .srs file is
+// the compiled binary form, anything else (the fallback copy) is JSON source.
+func (b BlockFiles) SingBoxFormat() string {
+	if strings.HasSuffix(b.SingBoxPath, ".srs") {
+		return "binary"
+	}
+	return "source"
 }
 
 // Runtime is the per-run state of an engine that keeps files and a control

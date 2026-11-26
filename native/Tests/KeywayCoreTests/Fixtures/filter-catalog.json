@@ -1,0 +1,133 @@
+{
+  "Groups": [
+    {
+      "ID": 1,
+      "Name": "General",
+      "Order": 1
+    },
+    {
+      "ID": 2,
+      "Name": "Other",
+      "Order": 2
+    },
+    {
+      "ID": 3,
+      "Name": "Regional",
+      "Order": 3
+    },
+    {
+      "ID": 4,
+      "Name": "Security",
+      "Order": 4
+    }
+  ],
+  "Lists": [
+    {
+      "Key": "adguard_dns_filter",
+      "ID": 1,
+      "Group": 1,
+      "Name": "AdGuard DNS filter",
+      "Description": "List composed of several filters (AdGuard Base filter, Social Media filter, Tracking Protection filter, Mobile Ads filter, EasyList and EasyPrivacy) and simplified specifically to be better compatible with DNS-level ad blocking",
+      "Homepage": "https://github.com/AdguardTeam/AdGuardSDNSFilter",
+      "DownloadURL": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt",
+      "Tags": [
+        1
+      ],
+      "Deprecated": false,
+      "Problematic": false,
+      "Languages": null,
+      "ExpiresSec": 345600,
+      "TimeUpdated": "2026-11-25T22:10:27+0000"
+    },
+    {
+      "Key": "hagezi_ultimate",
+      "ID": 49,
+      "Group": 1,
+      "Name": "HaGeZi's Ultimate Blocklist",
+      "Description": "Ultimate Sweeper - Strictly cleans the Internet and protects your privacy! Blocks Ads, Affiliate, Tracking (+Referral), Metrics, Telemetry, Phishing, Malware, Scam, Free Hoster, Fake, Coins and other Crap.",
+      "Homepage": "https://github.com/hagezi/dns-blocklists",
+      "DownloadURL": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_49.txt",
+      "Tags": [
+        1,
+        111
+      ],
+      "Deprecated": false,
+      "Problematic": true,
+      "Languages": null,
+      "ExpiresSec": 345600,
+      "TimeUpdated": "2026-11-25T18:12:37+0000"
+    },
+    {
+      "Key": "no_google",
+      "ID": 37,
+      "Group": 2,
+      "Name": "No Google",
+      "Description": "Completely blocks all Google-related domains (including YouTube).",
+      "Homepage": "https://github.com/nickspaargaren/no-google",
+      "DownloadURL": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_37.txt",
+      "Tags": [
+        4
+      ],
+      "Deprecated": false,
+      "Problematic": false,
+      "Languages": null,
+      "ExpiresSec": 345600,
+      "TimeUpdated": "2026-11-24T09:12:51+0000"
+    },
+    {
+      "Key": "deprecated_example_list",
+      "ID": 999001,
+      "Group": 2,
+      "Name": "No Google",
+      "Description": "Completely blocks all Google-related domains (including YouTube).",
+      "Homepage": "https://github.com/nickspaargaren/no-google",
+      "DownloadURL": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_37.txt",
+      "Tags": [
+        4
+      ],
+      "Deprecated": true,
+      "Problematic": false,
+      "Languages": null,
+      "ExpiresSec": 345600,
+      "TimeUpdated": "2026-11-24T09:12:51+0000"
+    },
+    {
+      "Key": "NOR_dandelion_sprouts_anti_malware_list",
+      "ID": 13,
+      "Group": 3,
+      "Name": "NOR: Dandelion Sprouts nordiske filtre",
+      "Description": "Dandelion Sprout's Nordic Filters (DNS filtering in AdGuard Home, AdGuard for Android, and AdGuard for Windows)",
+      "Homepage": "https://github.com/DandelionSprout/adfilt",
+      "DownloadURL": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_13.txt",
+      "Tags": [
+        3,
+        100
+      ],
+      "Deprecated": false,
+      "Problematic": false,
+      "Languages": [
+        "no"
+      ],
+      "ExpiresSec": 345600,
+      "TimeUpdated": "2026-11-25T23:10:23+0000"
+    },
+    {
+      "Key": "scam_blocklist_by_durablenapkin",
+      "ID": 10,
+      "Group": 4,
+      "Name": "Scam Blocklist by DurableNapkin",
+      "Description": "List for blocking untrustworthy websites",
+      "Homepage": "https://github.com/durablenapkin/scamblocklist",
+      "DownloadURL": "https://adguardteam.github.io/HostlistsRegistry/assets/filter_10.txt",
+      "Tags": [
+        2
+      ],
+      "Deprecated": false,
+      "Problematic": false,
+      "Languages": null,
+      "ExpiresSec": 345600,
+      "TimeUpdated": "2026-11-25T06:20:40+0000"
+    }
+  ],
+  "FetchedAt": "2026-11-20T08:30:00.123456789Z"
+}

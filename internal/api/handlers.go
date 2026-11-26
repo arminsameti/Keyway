@@ -266,7 +266,14 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		failErr(w, err, http.StatusInternalServerError)
 		return
 	}
-	ok(w, map[string]any{"reconnectRequired": res.ReconnectRequired, "restartRequired": res.RestartRequired})
+	out := map[string]any{
+		"reconnectRequired": res.ReconnectRequired, "restartRequired": res.RestartRequired,
+		"sniffingTurnedOn": res.SniffingTurnedOn,
+	}
+	if res.Warning != "" {
+		out["warning"] = res.Warning
+	}
+	ok(w, out)
 }
 
 // ---- connection ----
@@ -401,11 +408,9 @@ func (s *Server) routingTest(w http.ResponseWriter, r *http.Request) {
 		failErr(w, &models.ValidationError{Msg: "enter a domain or an IP address"}, http.StatusBadRequest)
 		return
 	}
-	rules := b.Rules
-	if rules == nil {
-		rules = s.svc.State().Settings.ActiveRules()
-	}
-	ok(w, map[string]any{"match": models.MatchRoute(rules, b.Host, b.Port)})
+	res := s.svc.TestRoute(b.Host, b.Port, b.Rules)
+	// "match" keeps the old shape; the new fields sit beside it.
+	ok(w, map[string]any{"match": res.RouteMatch, "filterList": res.FilterList, "allowedBy": res.AllowedBy})
 }
 
 // nodeConfig shows the configuration that would run for a node.

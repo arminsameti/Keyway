@@ -19,6 +19,16 @@ V2Ray core is optional. Download it in **Settings › Engines** and choose **Pre
 
 Mihomo (the Clash.Meta core) is optional too: download it in **Settings › Engines** and choose **Prefer Mihomo**. It is GPL-3.0 software that Keyway only downloads and runs as a separate program; Keyway does not link or bundle it. Releases come from [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) and are checked against the SHA-256 GitHub reports for them, since Mihomo publishes no checksum file; its geo data comes from MetaCubeX/meta-rules-dat and is checked the same way, and Mihomo is never allowed to download anything itself. Keyway only runs a server on Mihomo when every setting of it was checked to work there. XHTTP, mKCP, QUIC transport, Hysteria v1, ShadowTLS, NaiveProxy, SSH, OpenVPN, Tor, Cloudflare WARP reserved bytes, TLS fragmentation and chains with a UDP hop stay on Xray or sing-box, and so do the TUN interface and per-app rules: with those on, sing-box serves your apps in front of Mihomo.
 
+## Filter lists
+
+Chosen [filter lists](GUIDE.md#routing-and-control) are merged into one block set that Keyway compiles for the engine when you connect. A refresh in the background never restarts a running engine. Nothing changes in your configs until you choose a list.
+
+- **Xray and V2Ray:** a `keyway-block.dat` domain file in the engine's asset directory, used as the rule `ext:keyway-block.dat:block` that sends matches to the block outbound.
+- **sing-box:** a local source rule set `keyway-block` that rejects matches, also under TUN.
+- **Mihomo:** a file rule-provider `keyway-block` in Mihomo's home directory, matched by a rule that rejects.
+
+In TUN mode the engines only see site names with sniffing on, so Keyway turns sniffing on when ad blocking applies there.
+
 ## Tor (optional)
 
 Turn on **Settings › Engines › Enable Tor** to use the Tor network from Keyway. It is off by default, and while it is off nothing about Tor is shown, downloaded or run.

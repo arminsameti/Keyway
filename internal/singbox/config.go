@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"keyway/internal/filters"
 	"keyway/internal/models"
 	"keyway/internal/profile"
 )
@@ -105,8 +106,8 @@ func Supports(p profile.Profile, tags map[string]bool) error {
 // settings refer to, so they can be downloaded before building.
 func RequiredRuleSets(s models.Settings) []string {
 	seen := map[string]bool{}
-	for _, list := range routeLists(s) {
-		for _, e := range list.entries {
+	for _, list := range models.RouteLists(s) {
+		for _, e := range list.Entries {
 			if name, ok := ruleSetName(e); ok {
 				seen[name] = true
 			}
@@ -199,7 +200,7 @@ func BuildConfig(seg profile.Segment, s models.Settings, ruleSetPath func(string
 		}
 		cfg.Inbounds = append(cfg.Inbounds, in)
 	}
-	rules, sets, err := buildRules(s, ruleSetPath)
+	rules, sets, err := buildRules(s, ruleSetPath, seg.Block)
 	if err != nil {
 		return nil, err
 	}
@@ -548,48 +549,6 @@ func wireGuard(p profile.Profile) Endpoint {
 
 // ---- routing ----
 
-type routeList struct {
-	target  string // proxy direct block
-	entries []string
-}
-
-// routeLists mirrors the Xray rule order: block, explicit proxy, then direct.
-func routeLists(s models.Settings) []routeList {
-	split := func(v string) []string {
-		var out []string
-		for _, e := range strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == '\n' || r == '\r' }) {
-			if e = strings.TrimSpace(e); e != "" {
-				out = append(out, e)
-			}
-		}
-		return out
-	}
-	var lists []routeList
-	blocked := split(s.BlockedSites)
-	if s.BlockAds && len(blocked) == 0 {
-		blocked = []string{"geosite:category-ads-all"}
-	}
-	if s.BlockAds || s.RoutingMode == "custom" {
-		lists = append(lists, routeList{"block", blocked})
-	}
-	switch s.RoutingMode {
-	case "rules":
-		for _, r := range s.ActiveRules() {
-			lists = append(lists, routeList{r.Outbound, r.Entries})
-		}
-	case "custom":
-		lists = append(lists, routeList{"proxy", split(s.ProxySites)}, routeList{"direct", split(s.DirectSites)})
-	case "global":
-	default: // bypass-private
-		direct := split(s.DirectSites)
-		if len(direct) == 0 {
-			direct = []string{"geosite:private", "geosite:cn"}
-		}
-		lists = append(lists, routeList{"direct", append([]string{"geoip:private"}, direct...)})
-	}
-	return lists
-}
-
 func ruleSetName(e string) (string, bool) {
 	for _, kind := range []string{"geosite", "geoip"} {
 		if v, ok := strings.CutPrefix(e, kind+":"); ok {
@@ -602,18 +561,22 @@ func ruleSetName(e string) (string, bool) {
 	return "", false
 }
 
-func buildRules(s models.Settings, ruleSetPath func(string) string) ([]Rule, []RuleSet, error) {
+func buildRules(s models.Settings, ruleSetPath func(string) string, block *profile.BlockFiles) ([]Rule, []RuleSet, error) {
 	rules := []Rule{}
 	if s.Sniffing {
 		rules = append(rules, Rule{Action: "sniff"})
 	}
 	sets := map[string]bool{}
-	for _, l := range routeLists(s) {
+	for _, l := range models.RouteLists(s) {
 		rs, err := listRules(l, sets)
 		if err != nil {
 			return nil, nil, err
 		}
 		rules = append(rules, rs...)
+		if l.Target == "block" && block != nil && s.BlockAds {
+			// the compiled filter lists, right after the existing block rules
+			rules = append(rules, Rule{Action: "reject", RuleSet: []string{filters.Tag}})
+		}
 	}
 	names := make([]string, 0, len(sets))
 	for n := range sets {
@@ -624,6 +587,9 @@ func buildRules(s models.Settings, ruleSetPath func(string) string) ([]Rule, []R
 	for _, n := range names {
 		rs = append(rs, RuleSet{Type: "local", Tag: n, Format: "binary", Path: ruleSetPath(n)})
 	}
+	if block != nil && s.BlockAds {
+		rs = append(rs, RuleSet{Type: "local", Tag: filters.Tag, Format: block.SingBoxFormat(), Path: block.SingBoxPath})
+	}
 	return rules, rs, nil
 }
 
@@ -631,8 +597,8 @@ func buildRules(s models.Settings, ruleSetPath func(string) string) ([]Rule, []R
 // matcher inside one rule (a domain AND an IP range), which is never what a
 // list of alternatives means, so every kind gets a rule of its own; they share
 // the outbound and keep the list's position.
-func listRules(l routeList, sets map[string]bool) ([]Rule, error) {
-	if len(l.entries) == 0 {
+func listRules(l models.RouteList, sets map[string]bool) ([]Rule, error) {
+	if len(l.Entries) == 0 {
 		return nil, nil
 	}
 	var groups []Rule // one per kind, in first-seen order
@@ -646,7 +612,7 @@ func listRules(l routeList, sets map[string]bool) ([]Rule, error) {
 		}
 		return &groups[i]
 	}
-	for _, e := range l.entries {
+	for _, e := range l.Entries {
 		if name, ok := ruleSetName(e); ok {
 			g := group("rule_set")
 			g.RuleSet = append(g.RuleSet, name)
@@ -688,10 +654,10 @@ func listRules(l routeList, sets map[string]bool) ([]Rule, error) {
 	}
 	out := make([]Rule, 0, len(groups))
 	for _, g := range groups {
-		if l.target == "block" {
+		if l.Target == "block" {
 			g.Action = "reject"
 		} else {
-			g.Outbound = l.target
+			g.Outbound = l.Target
 		}
 		out = append(out, g)
 	}

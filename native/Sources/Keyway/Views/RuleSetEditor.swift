@@ -196,11 +196,14 @@ struct RuleSetEditor: View {
         Task {
             guard let m = await model.testRoute(host: dest.host, port: dest.port, rules: sets[i].rules) else { return }
             var text = "→ \(RuleEditing.outboundLabel(m.outbound))"
-            if let id = m.ruleId, let n = sets[i].rules.firstIndex(where: { $0.id == id }) {
+            if let name = m.filterList {
+                text = "→ Blocked by the filter list \(name)"
+            } else if let id = m.ruleId, let n = sets[i].rules.firstIndex(where: { $0.id == id }) {
                 text += " by rule \(n + 1)" + (m.entry.map { " (\($0))" } ?? "")
             } else {
                 text += " (no rule matched)"
             }
+            if m.allowedBy == true { text += "\nYour allowed sites keep a filter list from blocking it." }
             if let u = m.unknown, !u.isEmpty {
                 text += "\nNot checked here: " + u.prefix(4).joined(separator: ", ") + (u.count > 4 ? ", …" : "")
             }

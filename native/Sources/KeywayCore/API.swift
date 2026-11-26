@@ -74,10 +74,31 @@ public final class APIClient: @unchecked Sendable {
     public func status() async throws -> Status { try await get("/api/status") }
     public func importRules(_ text: String) async throws -> ImportedRules { try await post("/api/routing/import", ["text": text]) }
 
-    public func testRoute(host: String, port: Int, rules: [RouteRule]) async throws -> RouteMatch {
-        struct Body: Encodable { var host: String; var port: Int; var rules: [RouteRule] }
-        struct Reply: Decodable { var match: RouteMatch }
-        return try await post("/api/routing/test", Body(host: host, port: port, rules: rules), as: Reply.self).match
+    /// `rules` nil tests against the rules the current routing mode generates.
+    public func testRoute(host: String, port: Int, rules: [RouteRule]?) async throws -> RouteMatch {
+        struct Body: Encodable { var host: String; var port: Int; var rules: [RouteRule]? }
+        struct Reply: Decodable { var match: RouteMatch; var filterList: String?; var allowedBy: Bool? }
+        let r = try await post("/api/routing/test", Body(host: host, port: port, rules: rules), as: Reply.self)
+        var m = r.match
+        m.filterList = r.filterList.flatMap { $0.isEmpty ? nil : $0 }
+        m.allowedBy = r.allowedBy
+        return m
+    }
+
+    // MARK: filter lists
+
+    public func filters() async throws -> FilterView { try await get("/api/filters") }
+    public func filterCatalog(refresh: Bool) async throws -> Catalog { try await get("/api/filters/catalog" + (refresh ? "?refresh=1" : "")) }
+
+    /// Downloads one list, or every enabled list when `id` is nil.
+    public func refreshFilters(id: String? = nil) async throws -> FilterView {
+        struct Body: Encodable { var id: String }
+        struct Reply: Decodable { var filters: FilterView }
+        return try await post("/api/filters/refresh", Body(id: id ?? ""), as: Reply.self, timeout: 130).filters
+    }
+
+    public func previewFilter(url: String) async throws -> FilterPreview {
+        try await post("/api/filters/preview", ["url": url], timeout: 90)
     }
 
     public func nodeConfig(_ id: String) async throws -> ConfigPreview { try await get("/api/nodes/\(id)/config") }
@@ -183,7 +204,10 @@ public final class APIClient: @unchecked Sendable {
         _ = try await raw("POST", "/api/groups/\(id)/test", body: TestGroupBody(mode: mode, reconnect: true), timeout: 130)
     }
 
-    public func saveSettings(_ s: AppSettings) async throws { _ = try await raw("POST", "/api/settings", body: s) }
+    @discardableResult
+    public func saveSettings(_ s: AppSettings) async throws -> SettingsResult {
+        try Self.decoder.decode(SettingsResult.self, from: try await raw("POST", "/api/settings", body: s))
+    }
     public func setSystemProxy(_ on: Bool) async throws { _ = try await raw("POST", "/api/sysproxy", body: ["on": on]) }
     public func appUpdate() async throws -> AppUpdate { try await get("/api/app-update", as: AppUpdateBody.self).update }
     public func checkAppUpdate() async throws -> AppUpdate { try await post("/api/app-update/check", as: AppUpdateBody.self, timeout: 60).update }
