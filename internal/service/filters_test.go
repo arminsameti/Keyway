@@ -203,7 +203,7 @@ func TestCompileEmptyRemovesFiles(t *testing.T) {
 func TestSettingsSaveTriggersRefresh(t *testing.T) {
 	e := newFilterEnv(t)
 	got := make(chan string, 4)
-	e.svc.filterRefresh = func(_ context.Context, id string) error { got <- id; return nil }
+	e.svc.filterRefresh = func(_ context.Context, id string) (bool, error) { got <- id; return false, nil }
 	in := e.svc.store.Get().Settings
 	in.BlockAds = true
 	in.FilterLists = []models.FilterList{
@@ -233,12 +233,13 @@ func TestRemovedListLosesFileAndStatus(t *testing.T) {
 	if err := e.svc.RefreshFilters(context.Background(), "l1"); err != nil {
 		t.Fatal(err)
 	}
-	e.svc.filterRefresh = func(context.Context, string) error { return nil }
+	e.svc.filterRefresh = func(context.Context, string) (bool, error) { return false, nil }
 	in := e.svc.store.Get().Settings
 	in.FilterLists = nil
 	if _, err := e.svc.UpdateSettings(context.Background(), in); err != nil {
 		t.Fatal(err)
 	}
+	e.svc.bg.Wait()
 	if _, ok := e.svc.store.Get().FilterStatus["l1"]; ok {
 		t.Error("status kept")
 	}
@@ -901,4 +902,37 @@ func TestDueRefreshRunsInBackground(t *testing.T) {
 	e.svc.refreshDueFilters(context.Background(), map[string]time.Time{})
 	close(release)
 	e.svc.bg.Wait()
+}
+
+func TestSettingsSaveDoesNotWaitForCompile(t *testing.T) {
+	e := newFilterEnv(t)
+	e.setLists(t, true, e.custom("l1"))
+	if err := e.svc.RefreshFilters(context.Background(), "l1"); err != nil {
+		t.Fatal(err)
+	}
+	e.svc.compileMu.Lock() // a compile in progress
+	locked := true
+	defer func() {
+		if locked {
+			e.svc.compileMu.Unlock()
+		}
+	}()
+	in := e.svc.store.Get().Settings
+	in.AllowedSites = "a.com"
+	saved := make(chan error, 1)
+	go func() { _, err := e.svc.UpdateSettings(context.Background(), in); saved <- err }()
+	select {
+	case err := <-saved:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("UpdateSettings waited for the compile")
+	}
+	e.svc.compileMu.Unlock()
+	locked = false
+	e.svc.bg.Wait()
+	if v := e.svc.Filters(); v.Domains != 2 { // a.com allowlisted: b.com, c.com remain
+		t.Fatalf("recompile after the save missing: %+v", v)
+	}
 }

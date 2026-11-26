@@ -479,8 +479,8 @@ func enabledIDs(s models.Settings) map[string]models.FilterList {
 }
 
 // filtersChanged runs after a settings save: it drops removed lists' files,
-// recompiles when the selection, the allowlist or Block ads changed, and
-// refreshes newly enabled lists (or ones whose source changed) in the background.
+// then, in the background, refreshes newly enabled lists (or ones whose source
+// changed) and recompiles when the selection, the allowlist or Block ads changed.
 func (s *Service) filtersChanged(ctx context.Context, old, in models.Settings) {
 	oldOn, newOn := enabledIDs(old), enabledIDs(in)
 	var gone []string
@@ -515,22 +515,23 @@ func (s *Service) filtersChanged(ctx context.Context, old, in models.Settings) {
 		}
 	}
 	changed := len(gone) > 0 || len(fresh) > 0 || old.AllowedSites != in.AllowedSites || old.BlockAds != in.BlockAds || len(oldOn) != len(newOn)
-	if changed {
-		if _, _, err := s.compileFilters(); err != nil {
-			s.log.Warn("compile filter lists", "err", err)
-		}
-	}
-	if len(fresh) == 0 {
+	if !changed {
 		return
 	}
+	// The downloads and the recompile run in the background: the save must not
+	// wait for them. One compile follows the downloads, so a freshly downloaded
+	// list is in it.
 	bg := context.WithoutCancel(ctx)
 	s.bg.Add(1)
 	go func() {
 		defer s.bg.Done()
 		for _, id := range fresh {
-			if err := s.filterRefresh(bg, id); err != nil {
+			if _, err := s.filterRefresh(bg, id); err != nil {
 				s.log.Warn("filter list refresh failed", "list", id, "err", err)
 			}
+		}
+		if _, _, err := s.compileFilters(); err != nil {
+			s.log.Warn("compile filter lists", "err", err)
 		}
 	}()
 }

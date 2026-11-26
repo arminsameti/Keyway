@@ -112,13 +112,13 @@ type Service struct {
 	fetchGuard    func(net.IP) bool // refuses private targets on list and catalog fetches; tests relax it
 	catalogURL    string
 	maxMerged     int
-	running       func() bool                                // nil: s.run.IsRunning (tests fake it)
-	filterRefresh func(ctx context.Context, id string) error // the save-triggered refresh (tests observe it)
-	bg            sync.WaitGroup                             // background filter refreshes
-	catalogMu     sync.Mutex                                 // serialises catalog fetches
-	compileMu     sync.Mutex                                 // serialises compiles
-	compiles      atomic.Int64                               // compiles run (tests count them)
-	dueRunning    atomic.Bool                                // a background due-refresh pass is in flight
+	running       func() bool                                        // nil: s.run.IsRunning (tests fake it)
+	filterRefresh func(ctx context.Context, id string) (bool, error) // the save-triggered refresh, without compiling (tests observe it)
+	bg            sync.WaitGroup                                     // background filter refreshes
+	catalogMu     sync.Mutex                                         // serialises catalog fetches
+	compileMu     sync.Mutex                                         // serialises compiles
+	compiles      atomic.Int64                                       // compiles run (tests count them)
+	dueRunning    atomic.Bool                                        // a background due-refresh pass is in flight
 	flightMu      sync.Mutex
 	flights       map[string]*filterFlight // refreshes in progress, by list id
 
@@ -160,7 +160,7 @@ func New(c Config) (*Service, error) {
 	if err := s.migrate(); err != nil {
 		return nil, fmt.Errorf("migrate data: %w", err)
 	}
-	s.filterRefresh = s.RefreshFilters
+	s.filterRefresh = s.refreshOnce
 	if c.Store.Get().Settings.FiltersActive() {
 		if _, _, err := s.compileFilters(); err != nil {
 			s.log.Warn("compile filter lists", "err", err)
