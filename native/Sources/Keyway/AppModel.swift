@@ -186,6 +186,7 @@ final class AppModel {
 
     private func applyUpdate(_ u: AppUpdate) {
         appUpdate = u
+        UpdateNotifier.shared.notifyIfNeeded(u)
         // The disk image is only offered once its checksum matched: show it in Finder, once.
         if let d = u.download, d.state == "done", let path = d.path, revealedUpdate != path {
             revealedUpdate = path
@@ -375,7 +376,7 @@ final class AppModel {
         settings = s
         perform { [weak self] c in
             let r = try await c.saveSettings(s)
-            await self?.show(r)
+            self?.show(r)
         }
     }
 
@@ -508,7 +509,7 @@ final class AppModel {
         perform { [weak self] c in
             defer { Task { @MainActor in self?.connecting = false } }
             let r = try await c.saveSettings(s)
-            await self?.show(r)
+            self?.show(r)
             if reconnect { try await c.connect() }
         }
     }

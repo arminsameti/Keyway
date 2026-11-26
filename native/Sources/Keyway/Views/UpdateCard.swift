@@ -41,17 +41,7 @@ struct UpdateCard: View {
             if let u = update.notesUrl.flatMap(URL.init(string:)) {
                 Link("Release Notes", destination: u).font(.system(size: 12))
             }
-            if let d = update.download, d.state == "running" {
-                if let f = d.fraction {
-                    ProgressView(value: f).frame(width: 90)
-                } else {
-                    ProgressView().controlSize(.small)
-                }
-            } else if let d = update.download, d.state == "done", let path = d.path {
-                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)]) }
-            } else {
-                Button("Download") { model.downloadUpdate() }
-            }
+            UpdateActions()
         }
         if let d = update.download, d.state == "failed", let e = d.error {
             Text(e).font(.system(size: 11)).foregroundStyle(Palette.error)
