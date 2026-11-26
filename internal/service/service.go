@@ -118,6 +118,7 @@ type Service struct {
 	catalogMu     sync.Mutex                                         // serialises catalog fetches
 	compileMu     sync.Mutex                                         // serialises compiles
 	compiles      atomic.Int64                                       // compiles run (tests count them)
+	startupDone   chan struct{}                                      // closed when the startup compile is done
 	dueRunning    atomic.Bool                                        // a background due-refresh pass is in flight
 	flightMu      sync.Mutex
 	flights       map[string]*filterFlight // refreshes in progress, by list id
@@ -161,10 +162,21 @@ func New(c Config) (*Service, error) {
 		return nil, fmt.Errorf("migrate data: %w", err)
 	}
 	s.filterRefresh = s.refreshOnce
+	// The startup compile runs in the background so a big set never delays
+	// the daemon coming up. A connect waits for it (placeFilterFiles), so it
+	// never sees "nothing compiled" while this is still running.
+	s.startupDone = make(chan struct{})
 	if c.Store.Get().Settings.FiltersActive() {
-		if _, _, err := s.compileFilters(); err != nil {
-			s.log.Warn("compile filter lists", "err", err)
-		}
+		s.bg.Add(1)
+		go func() {
+			defer s.bg.Done()
+			defer close(s.startupDone)
+			if _, _, err := s.compileFilters(); err != nil {
+				s.log.Warn("compile filter lists", "err", err)
+			}
+		}()
+	} else {
+		close(s.startupDone)
 	}
 	s.syncTags()
 	return s, nil

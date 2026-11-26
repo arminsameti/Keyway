@@ -936,3 +936,30 @@ func TestSettingsSaveDoesNotWaitForCompile(t *testing.T) {
 		t.Fatalf("recompile after the save missing: %+v", v)
 	}
 }
+
+// A daemon that starts with lists on disk compiles them in the background, and
+// a connect right after startup waits for that compile instead of racing it.
+func TestStartupCompileIsBackgroundAndConnectWaits(t *testing.T) {
+	src := newFilterEnv(t)
+	src.setLists(t, true, src.custom("l1"))
+	if err := src.svc.RefreshFilters(context.Background(), "l1"); err != nil {
+		t.Fatal(err)
+	}
+	_, pl, _ := placeEnv(t)
+	// a second daemon on the same data directory: New must not need the compile
+	svc, err := New(Config{
+		Store: src.svc.store, Engines: src.svc.engines,
+		Runner: engine.NewRunner(""), Logger: src.svc.log, Dir: src.svc.dir,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blk, hash := svc.placeFilterFiles(pl)
+	if blk == nil || hash == "" {
+		t.Fatalf("connect right after startup saw no lists: %+v %q", blk, hash)
+	}
+	svc.bg.Wait()
+	if svc.Filters().Domains != 3 {
+		t.Fatal("startup compile did not finish")
+	}
+}

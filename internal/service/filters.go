@@ -682,6 +682,7 @@ func (s *Service) placeFilterFiles(pl *connPlan) (blk *profile.BlockFiles, hash 
 	}
 	// compileMu first (as compileFilters does): a compile in progress would
 	// otherwise hand us a mix of old and new files.
+	<-s.startupDone // the compile New started: "nothing compiled" must not be a race
 	// Only compileMu is held across the copies and the sing-box exec; filtersMu
 	// is taken briefly so the UI's reads never wait for them.
 	s.compileMu.Lock()
