@@ -740,3 +740,37 @@ func TestUpdateSettingsTurnsSniffingOn(t *testing.T) {
 		t.Fatalf("res=%+v err=%v", res, err)
 	}
 }
+
+func TestApplyOnConnectCoversTurningListsOff(t *testing.T) {
+	e := newFilterEnv(t)
+	e.svc.running = func() bool { return true }
+	e.setLists(t, true, e.custom("l1"))
+	if err := e.svc.RefreshFilters(context.Background(), "l1"); err != nil {
+		t.Fatal(err)
+	}
+	// the running connection placed this hash
+	e.svc.commitConnectHash(e.svc.compiledSum)
+	if v := e.svc.Filters(); v.ApplyOnConnect || v.Lists[0].ApplyOnConnect {
+		t.Fatalf("same hash: %+v", v)
+	}
+	// Block ads off: compiles to nothing, but the engine still blocks the old set
+	e.setLists(t, false, e.custom("l1"))
+	if _, _, err := e.svc.compileFilters(); err != nil {
+		t.Fatal(err)
+	}
+	if v := e.svc.Filters(); !v.ApplyOnConnect {
+		t.Fatalf("turning lists off must hint a reconnect: %+v", v)
+	}
+	// a connect that placed nothing records ""; a later compile is then pending
+	e.svc.commitConnectHash("")
+	if v := e.svc.Filters(); v.ApplyOnConnect {
+		t.Fatalf("nothing compiled and nothing placed: %+v", v)
+	}
+	e.setLists(t, true, e.custom("l1"))
+	if _, _, err := e.svc.compileFilters(); err != nil {
+		t.Fatal(err)
+	}
+	if v := e.svc.Filters(); !v.ApplyOnConnect || !v.Lists[0].ApplyOnConnect {
+		t.Fatalf("new content after a list-less connect: %+v", v)
+	}
+}

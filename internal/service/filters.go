@@ -432,14 +432,16 @@ func (s *Service) Filters() FilterView {
 		Domains: s.set.Len(), Warn: s.set.Len() > warnMergedDomains,
 		Widened: append([]filters.Widened{}, s.widened...), MergeError: s.mergeErr, PlaceError: s.placeErr,
 	}
-	v.ApplyOnConnect = running && s.compiledSum != "" && s.compiledSum != s.lastConnectHash
+	// both directions: new content, and lists turned off while the running
+	// connection still blocks the old set
+	v.ApplyOnConnect = running && s.compiledSum != s.lastConnectHash
 	s.filtersMu.Unlock()
 	v.Lists = []FilterListView{}
 	for _, l := range d.Settings.FilterLists {
 		st := d.FilterStatus[l.ID]
 		v.Lists = append(v.Lists, FilterListView{
 			FilterList: l, Status: st,
-			ApplyOnConnect: v.ApplyOnConnect && l.Enabled && st.Domains > 0,
+			ApplyOnConnect: v.ApplyOnConnect && l.Enabled,
 		})
 	}
 	return v
@@ -655,11 +657,9 @@ func (s *Service) setPlaceError(msg string) {
 	s.filtersMu.Unlock()
 }
 
-// commitConnectHash records the compiled set a started connection uses.
+// commitConnectHash records the compiled set a started connection uses; ""
+// means the connection placed no lists.
 func (s *Service) commitConnectHash(hash string) {
-	if hash == "" {
-		return
-	}
 	s.filtersMu.Lock()
 	s.lastConnectHash = hash
 	s.filtersMu.Unlock()
