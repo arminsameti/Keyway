@@ -30,6 +30,33 @@ public enum FilterSelection {
         lists.filter { $0.id != id }
     }
 
+    /// The list a catalog key or a URL stands for, independent of the backend id.
+    private static func identity(_ l: FilterList) -> String {
+        if let k = l.catalogKey, !k.isEmpty { return "catalog:" + k }
+        return "url:" + (l.url ?? "")
+    }
+
+    /// The settings the user last asked for, laid over what the backend holds now:
+    /// the server's settings with the wanted lists and allowlist. Lists match by
+    /// catalog key or URL, so a list added by the save that just finished keeps
+    /// its new id instead of being added again; one the backend no longer knows
+    /// goes back in without an id and gets a fresh one.
+    public static func reapplying(_ wanted: AppSettings, onto server: AppSettings) -> AppSettings {
+        let known = Dictionary(server.filterLists.map { (identity($0), $0) }, uniquingKeysWith: { a, _ in a })
+        var out = server
+        out.filterLists = wanted.filterLists.map { w in
+            if var s = known[identity(w)] {
+                s.enabled = w.enabled
+                return s
+            }
+            var fresh = w
+            fresh.id = ""
+            return fresh
+        }
+        out.allowedSites = wanted.allowedSites
+        return out
+    }
+
     /// Lists to show in the Custom tab: the ones that came from a URL.
     public static func custom(_ lists: [FilterList]) -> [FilterList] {
         lists.filter { ($0.catalogKey ?? "").isEmpty }

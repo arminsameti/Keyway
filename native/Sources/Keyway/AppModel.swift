@@ -396,8 +396,10 @@ final class AppModel {
     private(set) var catalog: Catalog?
     private(set) var catalogError: String?
     private(set) var catalogLoading = false
-    /// True from a tick until the saved selection is back from the backend, so two quick ticks never send stale list ids.
+    /// True from a tick until the saved selection is back from the backend. Rows are disabled meanwhile; a tick that still gets through is queued, never dropped.
     private(set) var filterSaving = false
+    /// The latest selection asked for while a save was in flight (last wins).
+    private var pendingFilters: AppSettings?
     private var filterPollTask: Task<Void, Never>?
 
     /// Saves a changed list selection or allowlist right away, then follows the downloads.
@@ -406,16 +408,37 @@ final class AppModel {
     }
 
     /// Like saveFilters, but waits for the result: nil on success, else the error text.
+    /// While another save is in flight the request is queued instead (nil: it is saved
+    /// when the running one finishes, and a failure then shows in errorMessage).
     func saveFiltersNow(_ s: AppSettings) async -> String? {
-        guard let client, !filterSaving else { return "Saving is already in progress." }
-        filterSaving = true
-        defer { filterSaving = false }
+        guard let client else { return "Not connected to the Keyway service." }
         settings = s
-        var failure: String?
-        do { show(try await client.saveSettings(s)) } catch {
-            failure = error.localizedDescription
-            errorMessage = failure
+        if filterSaving {
+            pendingFilters = s
+            return nil
         }
+        filterSaving = true
+        var failure: String?
+        var request: AppSettings? = s
+        while let req = request {
+            request = nil
+            do { show(try await client.saveSettings(req)) } catch {
+                failure = error.localizedDescription
+                errorMessage = failure
+            }
+            // The queued request is rebuilt on what the backend holds now, so it
+            // carries the ids this save created.
+            if let wanted = pendingFilters {
+                pendingFilters = nil
+                if let server = try? await client.state().settings {
+                    request = FilterSelection.reapplying(wanted, onto: server)
+                } else {
+                    request = wanted
+                }
+                if let r = request { settings = r }
+            }
+        }
+        filterSaving = false
         await refreshState()
         await refreshFilterView()
         if filterView.needsPolling { startFilterPolling() }

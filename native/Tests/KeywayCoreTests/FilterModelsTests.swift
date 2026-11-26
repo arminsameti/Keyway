@@ -113,6 +113,36 @@ final class FilterSelectionTests: XCTestCase {
         XCTAssertEqual(FilterSelection.custom(once).count, 1)
     }
 
+    func testReapplyingKeepsTheNewIdsAndTheLatestSelection() {
+        // tick 1 (a) is saved and got id "n1"; tick 2 (b, a custom url) was queued meanwhile
+        var server = AppSettings()
+        server.filterLists = [FilterList(id: "n1", catalogKey: "a", name: "A")]
+        var wanted = AppSettings()
+        wanted.allowedSites = "ok.com"
+        wanted.filterLists = [
+            FilterList(id: "", catalogKey: "a", name: "A"),
+            FilterList(id: "", catalogKey: "b", name: "B"),
+            FilterList(id: "", name: "x", url: "https://x.example/l.txt", enabled: false),
+        ]
+        let out = FilterSelection.reapplying(wanted, onto: server)
+        XCTAssertEqual(out.filterLists.map(\.id), ["n1", "", ""], "a is not added twice")
+        XCTAssertEqual(out.filterLists.map { $0.catalogKey ?? $0.url ?? "" }, ["a", "b", "https://x.example/l.txt"])
+        XCTAssertEqual(out.filterLists.map(\.enabled), [true, true, false])
+        XCTAssertEqual(out.allowedSites, "ok.com")
+    }
+
+    func testReapplyingDropsWhatTheUserRemovedAndResetsUnknownIds() {
+        var server = AppSettings()
+        server.blockAds = false
+        server.filterLists = [FilterList(id: "n1", catalogKey: "a", name: "A"), FilterList(id: "n2", catalogKey: "b", name: "B")]
+        var wanted = AppSettings()
+        wanted.filterLists = [FilterList(id: "gone", catalogKey: "c", name: "C"), FilterList(id: "n2", catalogKey: "b", name: "B", enabled: false)]
+        let out = FilterSelection.reapplying(wanted, onto: server)
+        XCTAssertEqual(out.filterLists.map(\.id), ["", "n2"])
+        XCTAssertEqual(out.filterLists.map(\.enabled), [true, false])
+        XCTAssertFalse(out.blockAds, "everything else is the server's")
+    }
+
     func testStatusLines() throws {
         let now = Date()
         var v = FilterListView(list: FilterList(id: "1", name: "n"))
